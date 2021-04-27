@@ -113,7 +113,8 @@ static me_bool_t _ME_GetProcessExCallback(me_pid_t   pid,
 {
     _ME_GetProcessExArgs_t *parg = (_ME_GetProcessExArgs_t *)arg;
     me_tchar_t proc_path[ME_PATH_MAX] = {  };
-    if (ME_GetProcessPathEx(pid, proc_path, ME_PATH_MAX - 1) == ME_TRUE)
+    if (ME_GetProcessPathEx(pid, proc_path, 
+                            ME_ARRLEN(proc_path) - 1) == ME_TRUE)
     {
         me_size_t proc_ref_len = ME_STRLEN(parg->proc_ref);
         if (proc_ref_len <= ME_PATH_MAX)
@@ -167,7 +168,7 @@ ME_GetProcessPathEx(me_pid_t     pid,
 {
     me_size_t chr_count = 0;
 
-    if (!proc_path)
+    if (!proc_path || max_len == 0)
         return chr_count;
 
 #   if ME_OS == ME_OS_WIN
@@ -206,6 +207,180 @@ ME_GetProcessPathEx(me_pid_t     pid,
 #   endif
 
     return chr_count;
+}
+
+ME_API me_size_t
+ME_GetProcessPath(me_tchar_t  *proc_path,
+                  me_size_t    max_len)
+{
+    me_size_t chr_count = 0;
+
+    if (!proc_path || max_len == 0)
+        return chr_count;
+
+#   if ME_OS == ME_OS_WIN
+    {
+        HMODULE hModule = GetModuleHandle(NULL);
+        if (!hModule)
+            return chr_count;
+
+        chr_count = (me_size_t)GetModuleFileName(hModule, proc_path, max_len);
+    }
+#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
+    {
+        chr_count = ME_GetProcessPathEx(ME_GetProcess(), proc_path, max_len);
+    }
+#   endif
+
+    return chr_count;
+}
+
+ME_API me_size_t
+ME_GetProcessNameEx(me_pid_t     pid,
+                    me_tchar_t  *proc_name,
+                    me_size_t    max_len)
+{
+    me_size_t chr_count = 0;
+
+    if (!proc_name || max_len == 0)
+        return chr_count;
+
+#   if ME_OS == ME_OS_WIN || ME_OS == ME_OS_LINUX
+    {
+        me_tchar_t proc_path[ME_PATH_MAX] = {  };
+        if (ME_GetProcessPathEx(pid, proc_path, ME_ARRLEN(proc_path) - 1))
+        {
+            me_tchar_t path_chr;
+            me_tchar_t *tmp;
+
+#           if ME_OS == ME_OS_WIN
+            path_chr = ME_STR('\\');
+#           elif ME_OS == ME_OS_LINUX
+            path_chr = ME_STR('/');
+#           endif
+
+            for (tmp = proc_path; (tmp = ME_STRCHR(proc_path, path_chr)); tmp = &tmp[1]);
+
+            chr_count = ME_STRLEN(tmp);
+            if (chr_count > max_len)
+                chr_count = max_len;
+
+            ME_MEMCPY((void *)proc_name, (void *)tmp, 
+                      chr_count * sizeof(proc_name[0]));
+        }
+    }
+#   elif ME_OS == ME_OS_BSD
+    {
+        struct procstat *ps = procstat_open_sysctl();
+        if (ps)
+        {
+            unsigned int proc_count = 0;
+            struct kinfo_proc *pproc = procstat_getprocs(ps, KERN_PROC_PID, pid, &proc_count);
+
+            if (pproc)
+            {
+                if (proc_count > 0)
+                {
+                    chr_count = ME_STRLEN(pproc->ki_comm);
+                    if (chr_count > max_len)
+                        chr_count = max_len;
+                    ME_MEMCPY((void *)proc_name, (void *)pproc->ki_comm, 
+                              chr_count * sizeof(proc_name[0]));
+                }
+
+                procstat_freeprocs(pproc);
+            }
+
+            procstat_close(ps);
+        }
+    }
+#   endif
+
+    return chr_count;
+}
+
+ME_API me_size_t
+ME_GetProcessName(me_tchar_t  *proc_name,
+                  me_size_t    max_len)
+{
+    me_size_t chr_count = 0;
+#   if ME_OS == ME_OS_WIN
+    {
+        me_tchar_t proc_path[ME_PATH_MAX];
+        if (ME_GetProcessPath(proc_path, ME_ARRLEN(proc_path) - 1))
+        {
+            me_tchar_t path_chr = ME_STR('\\');
+            me_tchar_t *tmp;
+
+            for (tmp = proc_path; (tmp = ME_STRCHR(proc_path, path_chr)); tmp = &tmp[1]);
+
+            chr_count = ME_STRLEN(tmp);
+            if (chr_count > max_len)
+                chr_count = max_len;
+
+            ME_MEMCPY((void *)proc_name, (void *)tmp, 
+                      chr_count * sizeof(proc_name[0]));
+        }
+    }
+#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
+    {
+        chr_count = ME_GetProcessNameEx(ME_GetProcess(), proc_name, max_len);
+    }
+#   endif
+
+    return chr_count;
+}
+
+ME_API me_pid_t
+ME_GetProcessParentEx(me_pid_t pid)
+{
+    me_pid_t ppid = (me_pid_t)ME_BAD;
+#   if ME_OS == ME_OS_WIN
+    {
+        HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if (hSnap != INVALID_HANDLE_VALUE)
+        {
+            PROCESSENTRY32 entry;
+            if (Process32First(hSnap, &entry))
+            {
+                do
+                {
+                    if (entry.th32ProcessID == pid)
+                    {
+                        ppid = (me_pid_t)entry.th32ParentProcessID;
+                        break;
+                    }
+                }
+                while(Process32Next(hSnap, &entry));
+            }
+
+            CloseHandle(hSnap);
+        }
+    }
+#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
+    {
+
+    }
+#   endif
+
+    return ppid;
+}
+
+ME_API me_pid_t
+ME_GetProcessParent(me_void_t)
+{
+    me_pid_t ppid = (me_pid_t)ME_BAD;
+#   if ME_OS == ME_OS_WIN
+    {
+        ppid = ME_GetProcessParentEx(ME_GetProcess());
+    }
+#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
+    {
+        ppid = (me_pid_t)getppid();
+    }
+#   endif
+
+    return ppid;
 }
 
 #endif

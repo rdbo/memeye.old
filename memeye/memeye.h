@@ -100,6 +100,10 @@
 #define ME_ATOI      atoi
 #define ME_SNPRINTF  snprintf
 #endif
+#define ME_MALLOC    malloc
+#define ME_CALLOC    calloc
+#define ME_FREE      free
+#define ME_MEMCPY    memcpy
 #define ME_ARRLEN(arr) (sizeof(arr) / sizeof(arr[0]))
 
 /* Flags */
@@ -403,6 +407,12 @@ ME_GetProcessNameEx(me_pid_t     pid,
 ME_API me_size_t
 ME_GetProcessName(me_tchar_t  *proc_name,
                   me_size_t    max_len);
+
+ME_API me_pid_t
+ME_GetProcessParentEx(me_pid_t pid);
+
+ME_API me_pid_t
+ME_GetProcessParent(me_void_t);
 
 /****************************************/
 

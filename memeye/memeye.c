@@ -118,7 +118,8 @@ static me_bool_t _ME_GetProcessExCallback(me_pid_t   pid,
         me_size_t proc_ref_len = ME_STRLEN(parg->proc_ref);
         if (proc_ref_len <= ME_PATH_MAX)
         {
-            if (!ME_STRCMP(&proc_path[ME_PATH_MAX - proc_ref_len], parg->proc_ref))
+            if (!ME_STRCMP(&proc_path[ME_PATH_MAX - proc_ref_len], 
+                            parg->proc_ref))
             {
                 parg->pid = pid;
                 return ME_FALSE;
@@ -175,12 +176,14 @@ ME_GetProcessPathEx(me_pid_t     pid,
         if (!hProcess)
             return pid;
 
-        chr_count = (me_size_t)GetModuleFileNameEx(hProcess, NULL, proc_path, max_len);
+        chr_count = (me_size_t)GetModuleFileNameEx(hProcess, NULL,
+                                                   proc_path, max_len);
         CloseHandle(hProcess);
     }
 #   elif ME_OS == ME_OS_LINUX
     me_tchar_t exe_path[64] = {  };
-    ME_SNPRINTF(exe_path, ME_ARRLEN(exe_path) - 1, ME_STR("/proc/%d/exe"), pid);
+    ME_SNPRINTF(exe_path, ME_ARRLEN(exe_path) - 1,
+                ME_STR("/proc/%d/exe"), pid);
     chr_count = (me_size_t)readlink(exe_path, proc_path, max_len);
 #   elif ME_OS == ME_OS_BSD
     {
@@ -188,7 +191,8 @@ ME_GetProcessPathEx(me_pid_t     pid,
         if (ps)
         {
             unsigned int proc_count = 0;
-            struct kinfo_proc *pproc = procstat_getprocs(ps, KERN_PROC_PID, pid, &proc_count);
+            struct kinfo_proc *pproc = procstat_getprocs(ps, KERN_PROC_PID,
+                                                         pid, &proc_count);
             if (pproc && proc_count > 0)
             {
                 if (procstat_getpathname(ps, pproc, proc_path, max_len))

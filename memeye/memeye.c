@@ -71,7 +71,7 @@ ME_EnumProcesses(me_bool_t(*callback)(me_pid_t pid, me_void_t *arg),
         while ((pdirent = readdir(dir)))
         {
             me_pid_t pid = ME_ATOI(pdirent->d_name);
-            if (pid || (!pid && ME_STRCMP(pdirent->d_name, ME_STR("0"))))
+            if (pid || (!pid && !ME_STRCMP(pdirent->d_name, ME_STR("0"))))
             {
                 if (callback(pid, arg) == ME_FALSE)
                     break;
@@ -115,12 +115,13 @@ static me_bool_t _ME_GetProcessExCallback(me_pid_t   pid,
     _ME_GetProcessExArgs_t *parg = (_ME_GetProcessExArgs_t *)arg;
     me_tchar_t proc_path[ME_PATH_MAX] = {  };
     if (ME_GetProcessPathEx(pid, proc_path, 
-                            ME_ARRLEN(proc_path) - 1) == ME_TRUE)
+                            ME_ARRLEN(proc_path)))
     {
         me_size_t proc_ref_len = ME_STRLEN(parg->proc_ref);
-        if (proc_ref_len <= ME_PATH_MAX)
+        me_size_t proc_path_len = ME_STRLEN(proc_path);
+        if (proc_ref_len <= proc_path_len)
         {
-            if (!ME_STRCMP(&proc_path[ME_PATH_MAX - proc_ref_len], 
+            if (!ME_STRCMP(&proc_path[proc_path_len - proc_ref_len], 
                             parg->proc_ref))
             {
                 parg->pid = pid;
@@ -186,7 +187,10 @@ ME_GetProcessPathEx(me_pid_t     pid,
     me_tchar_t exe_path[64] = {  };
     ME_SNPRINTF(exe_path, ME_ARRLEN(exe_path) - 1,
                 ME_STR("/proc/%d/exe"), pid);
-    chr_count = (me_size_t)readlink(exe_path, proc_path, max_len);
+    chr_count = (me_size_t)readlink(exe_path, proc_path, max_len - 1);
+    proc_path[max_len - 1] = ME_STR('\00');
+    if (chr_count > 0 && chr_count < max_len)
+        proc_path[chr_count] = ME_STR('\00');
 #   elif ME_OS == ME_OS_BSD
     {
         struct procstat *ps = procstat_open_sysctl();
@@ -246,28 +250,61 @@ ME_GetProcessNameEx(me_pid_t     pid,
     if (!proc_name || max_len == 0)
         return chr_count;
 
-#   if ME_OS == ME_OS_WIN || ME_OS == ME_OS_LINUX
+#   if ME_OS == ME_OS_WIN /* || ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD */
     {
         me_tchar_t proc_path[ME_PATH_MAX] = {  };
         if (ME_GetProcessPathEx(pid, proc_path, ME_ARRLEN(proc_path) - 1))
         {
             me_tchar_t path_chr;
             me_tchar_t *tmp;
+            me_tchar_t *file_str;
 
 #           if ME_OS == ME_OS_WIN
             path_chr = ME_STR('\\');
-#           elif ME_OS == ME_OS_LINUX
+#           elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
             path_chr = ME_STR('/');
 #           endif
 
-            for (tmp = proc_path; (tmp = ME_STRCHR(proc_path, path_chr)); tmp = &tmp[1]);
+            for (tmp = proc_path;
+                 (tmp = ME_STRCHR(tmp, path_chr));
+                 tmp = &tmp[1], file_str = tmp);
 
-            chr_count = ME_STRLEN(tmp);
+            chr_count = ME_STRLEN(file_str);
             if (chr_count > max_len)
                 chr_count = max_len;
 
-            ME_MEMCPY((void *)proc_name, (void *)tmp, 
+            ME_MEMCPY((void *)proc_name, (void *)file_str,
                       chr_count * sizeof(proc_name[0]));
+        }
+    }
+#   elif ME_OS == ME_OS_LINUX
+    {
+        int fd;
+        me_tchar_t comm_path[64] = {  };
+        ME_SNPRINTF(comm_path, ME_ARRLEN(comm_path) - 1, 
+                    ME_STR("/proc/%d/comm"), pid);
+
+        fd = open(comm_path, O_RDONLY);
+
+        if (fd == -1)
+            return chr_count;
+
+        chr_count = read(fd, proc_name, max_len * sizeof(proc_name[0]));
+
+        {
+            me_tchar_t *pchr;
+            for (pchr = proc_name;
+                 pchr != &proc_name[max_len - 1];
+                 pchr = &pchr[1])
+            {
+                if (*pchr == ME_STR('\n'))
+                {
+                    *pchr = ME_STR('\00');
+                    break;
+                }
+            }
+
+            proc_name[max_len - 1] = ME_STR('\00');
         }
     }
 #   elif ME_OS == ME_OS_BSD

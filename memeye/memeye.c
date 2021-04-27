@@ -23,19 +23,19 @@ typedef struct _ME_GetProcessExArgs_t
 ME_API void *
 ME_malloc(size_t size)
 {
-    return malloc(size);
+    return ME_MALLOC(size);
 }
 
 ME_API void *
 ME_calloc(size_t nmemb, size_t size)
 {
-    return calloc(nmemb, size);
+    return ME_CALLOC(nmemb, size);
 }
 
 ME_API void
 ME_free(void *ptr)
 {
-    free(ptr);
+    ME_FREE(ptr);
 }
 
 /****************************************/

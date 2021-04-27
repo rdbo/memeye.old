@@ -80,26 +80,27 @@
 
 /* Helpers */
 #if ME_CHARSET == ME_CHARSET_UC
-#define ME_STR(str) L##str
-#define ME_STR_CMP(str1, str2) wcscmp(str1, str2)
-#define ME_STR_N_CMP(str1, str2, n) wcsncmp(str1, str2, n)
-#define ME_STR_LEN(str) wcslen(str)
-#define ME_STR_CHR(str, c) wcschr(str, c)
-#define ME_STR_STR(str, sstr) wcsstr(str, sstr)
-#define ME_STR_TO_L(str, nptr, base) wcstol(str, nptr, base)
-#define ME_A_TO_I(str) atoi(str)
-#define ME_SNPRINTF snwprintf
+#define ME_STR(wstr) L##str
+#define ME_STRCMP    wcscmp
+#define ME_STRNCMP   wcsncmp
+#define ME_STRLEN    wcslen
+#define ME_STRCHR    wcschr
+#define ME_STRSTR    wcsstr
+#define ME_STRTOL    wcstol
+#define ME_ATOI      atoi
+#define ME_SNPRINTF  snwprintf
 #elif ME_CHARSET == ME_CHARSET_MB
-#define ME_STR(str) str
-#define ME_STR_CMP(str1, str2) strcmp(str1, str2)
-#define ME_STR_N_CMP(str1, str2, n) strncmp(str1, str2, n)
-#define ME_STR_LEN(str) strlen(str)
-#define ME_STR_CHR(str, c) strchr(str, c)
-#define ME_STR_STR(str, sstr) strstr(str, sstr)
-#define ME_STR_TO_L(str, nptr, base) strtol(str, nptr, base)
-#define ME_A_TO_I(str) atoi(str)
-#define ME_SNPRINTF snprintf
+#define ME_STR(str)  str
+#define ME_STRCMP    strcmp
+#define ME_STRNCMP   strncmp
+#define ME_STRLEN    strlen
+#define ME_STRCHR    strchr
+#define ME_STRSTR    strstr
+#define ME_STRTOL    strtol
+#define ME_ATOI      atoi
+#define ME_SNPRINTF  snprintf
 #endif
+#define ME_ARRLEN(arr) (sizeof(arr) / sizeof(arr[0]))
 
 /* Flags */
 #if ME_OS == ME_OS_WIN
@@ -202,7 +203,6 @@
 #include <dlfcn.h>
 #include <link.h>
 #include <fcntl.h>
-#include <kvm.h>
 #include <libprocstat.h>
 #include <paths.h>
 #endif
@@ -377,48 +377,51 @@ ME_free(void *ptr);
 /****************************************/
 
 ME_API me_bool_t
-ME_EnumProcesses(me_bool_t(*callback)(me_pid_t pid));
+ME_EnumProcesses(me_bool_t(*callback)(me_pid_t pid, me_void_t *arg),
+                 me_void_t *arg);
 
 ME_API me_pid_t
-ME_GetProcessEx(me_tstring_t process_name);
+ME_GetProcessEx(me_tstring_t proc_ref);
 
 ME_API me_pid_t
 ME_GetProcess(me_void_t);
 
 ME_API me_size_t
 ME_GetProcessPathEx(me_pid_t     pid,
-                    me_tstring_t proc_path,
+                    me_tchar_t  *proc_path,
                     me_size_t    max_len);
 
 ME_API me_size_t
-ME_GetProcessPath(me_tstring_t proc_path,
+ME_GetProcessPath(me_tchar_t  *proc_path,
                   me_size_t    max_len);
 
 ME_API me_size_t
 ME_GetProcessNameEx(me_pid_t     pid,
-                    me_tstring_t proc_name,
+                    me_tchar_t  *proc_name,
                     me_size_t    max_len);
 
 ME_API me_size_t
-ME_GetProcessName(me_tstring_t proc_name,
+ME_GetProcessName(me_tchar_t  *proc_name,
                   me_size_t    max_len);
 
 /****************************************/
 
 ME_API me_bool_t
 ME_EnumModulesEx(me_pid_t   pid,
-                 me_bool_t(*callback)(me_module_t mod));
+                 me_bool_t(*callback)(me_module_t mod, me_void_t *arg),
+                 me_void_t *arg);
 
 ME_API me_bool_t
-ME_EnumModules(me_bool_t(*pfnCallback)(me_module_t mod));
+ME_EnumModules(me_bool_t(*callback)(me_module_t mod, me_void_t *arg),
+               me_void_t *arg);
 
 ME_API me_bool_t
 ME_GetModuleEx(me_pid_t     pid,
-               me_tstring_t module_ref,
+               me_tstring_t mod_ref,
                me_module_t *pmod);
 
 ME_API me_bool_t
-ME_GetModule(me_tstring_t module_ref,
+ME_GetModule(me_tstring_t mod_ref,
              me_module_t *pmod);
 
 ME_API me_size_t

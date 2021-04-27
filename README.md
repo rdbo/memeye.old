@@ -1,4 +1,4 @@
 # MemEye
-# _Cross-platform Process Hacking Library - by rdbo._
-# ---
+Cross-platform Process Hacking Library - by rdbo.
+
 # Work In Progress (WIP)

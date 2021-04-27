@@ -362,15 +362,16 @@ ME_GetProcessParentEx(me_pid_t pid)
         me_tchar_t *status_file = (me_tchar_t *)ME_NULL;
         {
             me_tchar_t status_path[64] = {  };
-            me_size_t  read_len = 1024;
+            me_tchar_t read_buf[1024] = {  };
+            me_size_t  read_len = ME_ARRLEN(read_buf);
             me_size_t  read_count = 0;
             ME_SNPRINTF(status_path, ME_ARRLEN(status_path) - 1,
-                        ME_STR("/proc/%d/stat"));
+                        ME_STR("/proc/%d/status"), pid);
             fd = open(status_path, O_RDONLY);
             if (fd == -1 || !(status_file = ME_malloc(read_len)))
                 return ppid;
 
-            do
+            while((read(fd, read_buf, sizeof(read_buf))) > 0)
             {
                 me_tchar_t *old_status_file = status_file;
                 status_file = ME_calloc((read_len * ++read_count) + 1,
@@ -394,20 +395,27 @@ ME_GetProcessParentEx(me_pid_t pid)
                 if (!status_file)
                     return ppid;
 
-            } while((read(fd, &status_file[(read_count - 1) * read_len],
-                          read_len * sizeof(status_file[0]))));
+                ME_MEMCPY(&status_file[(read_count - 1) * read_len], read_buf, sizeof(read_buf));
 
+                status_file[read_len] = ME_STR('\00');
+            }
+        }
+
+        {
+            me_tchar_t *ppid_str;
+            me_tchar_t match[] = ME_STR("PPid:\t");
+            if ((ppid_str = ME_STRSTR(status_file,  ME_STR(match))))
             {
-                me_tchar_t *ppid_str;
-                if ((ppid_str = ME_STRSTR(status_file,  ME_STR("Ppid:\t"))))
-                {
-                    me_tchar_t *ppid_end = ME_STRCHR(ppid_str, ME_STR('\n'));
-                    ppid = (me_pid_t)ME_STRTOL(ppid_str, ppid_end, 10);
-                }
+                ppid = (me_pid_t)ME_STRTOL(&ppid_str[ME_ARRLEN(match) - 1], NULL, 10);
             }
 
-            ME_free(status_file);
+            else
+            {
+                ppid = (me_pid_t)ME_NULL;
+            }
         }
+
+        ME_free(status_file);
     }
 #   endif
 

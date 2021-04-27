@@ -51,6 +51,7 @@ ME_EnumProcesses(me_bool_t(*callback)(me_pid_t pid, me_void_t *arg),
         if (hSnap != INVALID_HANDLE_VALUE)
         {
             PROCESSENTRY32 entry;
+            entry.dwSize = sizeof(PROCESSENTRY32);
             if (Process32First(hSnap, &entry))
             {
                 while(
@@ -341,6 +342,7 @@ ME_GetProcessParentEx(me_pid_t pid)
         if (hSnap != INVALID_HANDLE_VALUE)
         {
             PROCESSENTRY32 entry;
+            entry.dwSize = sizeof(PROCESSENTRY32);
             if (Process32First(hSnap, &entry))
             {
                 do

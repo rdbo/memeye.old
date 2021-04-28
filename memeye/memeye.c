@@ -45,6 +45,10 @@ ME_EnumProcesses(me_bool_t(*callback)(me_pid_t pid, me_void_t *arg),
                  me_void_t *arg)
 {
     me_bool_t ret = ME_FALSE;
+
+    if (!callback)
+        return ret;
+
 #   if   ME_OS == ME_OS_WIN
     {
         HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
@@ -113,7 +117,7 @@ static me_bool_t _ME_GetProcessExCallback(me_pid_t   pid,
                                           me_void_t *arg)
 {
     _ME_GetProcessExArgs_t *parg = (_ME_GetProcessExArgs_t *)arg;
-    me_tchar_t proc_path[ME_PATH_MAX] = {  };
+    me_tchar_t proc_path[ME_PATH_MAX] = { 0 };
     if (ME_GetProcessPathEx(pid, proc_path, 
                             ME_ARRLEN(proc_path)))
     {
@@ -184,13 +188,15 @@ ME_GetProcessPathEx(me_pid_t     pid,
         CloseHandle(hProcess);
     }
 #   elif ME_OS == ME_OS_LINUX
-    me_tchar_t exe_path[64] = {  };
-    ME_SNPRINTF(exe_path, ME_ARRLEN(exe_path) - 1,
-                ME_STR("/proc/%d/exe"), pid);
-    chr_count = (me_size_t)readlink(exe_path, proc_path, max_len - 1);
-    proc_path[max_len - 1] = ME_STR('\00');
-    if (chr_count > 0 && chr_count < max_len)
-        proc_path[chr_count] = ME_STR('\00');
+    {
+        me_tchar_t exe_path[64] = { 0 };
+        ME_SNPRINTF(exe_path, ME_ARRLEN(exe_path) - 1,
+                    ME_STR("/proc/%d/exe"), pid);
+        chr_count = (me_size_t)readlink(exe_path, proc_path, max_len - 1);
+        proc_path[max_len - 1] = ME_STR('\00');
+        if (chr_count > 0 && chr_count < max_len)
+            proc_path[chr_count] = ME_STR('\00');
+    }
 #   elif ME_OS == ME_OS_BSD
     {
         struct procstat *ps = procstat_open_sysctl();
@@ -252,7 +258,7 @@ ME_GetProcessNameEx(me_pid_t     pid,
 
 #   if ME_OS == ME_OS_WIN /* || ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD */
     {
-        me_tchar_t proc_path[ME_PATH_MAX] = {  };
+        me_tchar_t proc_path[ME_PATH_MAX] = { 0 };
         if (ME_GetProcessPathEx(pid, proc_path, ME_ARRLEN(proc_path) - 1))
         {
             me_tchar_t path_chr;
@@ -280,7 +286,7 @@ ME_GetProcessNameEx(me_pid_t     pid,
 #   elif ME_OS == ME_OS_LINUX
     {
         int fd;
-        me_tchar_t comm_path[64] = {  };
+        me_tchar_t comm_path[64] = { 0 };
         ME_SNPRINTF(comm_path, ME_ARRLEN(comm_path) - 1, 
                     ME_STR("/proc/%d/comm"), pid);
 
@@ -342,6 +348,10 @@ ME_GetProcessName(me_tchar_t  *proc_name,
                   me_size_t    max_len)
 {
     me_size_t chr_count = 0;
+
+    if (!proc_name || max_len == 0)
+        return chr_count;
+
 #   if ME_OS == ME_OS_WIN
     {
         me_tchar_t proc_path[ME_PATH_MAX];
@@ -400,14 +410,14 @@ ME_GetProcessParentEx(me_pid_t pid)
         int fd;
         me_tchar_t *status_file = (me_tchar_t *)ME_NULL;
         {
-            me_tchar_t status_path[64] = {  };
-            me_tchar_t read_buf[1024] = {  };
+            me_tchar_t status_path[64] = { 0 };
+            me_tchar_t read_buf[1024] = { 0 };
             me_size_t  read_len = ME_ARRLEN(read_buf);
             me_size_t  read_count = 0;
             ME_SNPRINTF(status_path, ME_ARRLEN(status_path) - 1,
                         ME_STR("/proc/%d/status"), pid);
             fd = open(status_path, O_RDONLY);
-            if (fd == -1 || !(status_file = ME_malloc(read_len)))
+            if (fd == -1)
                 return ppid;
 
             while((read(fd, read_buf, sizeof(read_buf))) > 0)

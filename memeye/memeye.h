@@ -85,8 +85,14 @@
 #define ME_STRNCMP   wcsncmp
 #define ME_STRLEN    wcslen
 #define ME_STRCHR    wcschr
+#define ME_STRRCHR   wcsrchr
 #define ME_STRSTR    wcsstr
 #define ME_STRTOL    wcstol
+#if ME_ARCH_SIZE == 64
+#define ME_STRTOP    wcstoull
+#else
+#define ME_STRTOP    wcstoul
+#endif
 #define ME_ATOI      atoi
 #define ME_SNPRINTF  snwprintf
 #elif ME_CHARSET == ME_CHARSET_MB
@@ -95,8 +101,14 @@
 #define ME_STRNCMP   strncmp
 #define ME_STRLEN    strlen
 #define ME_STRCHR    strchr
+#define ME_STRRCHR   strrchr
 #define ME_STRSTR    strstr
 #define ME_STRTOL    strtol
+#if ME_ARCH_SIZE == 64
+#define ME_STRTOP    strtoull
+#else
+#define ME_STRTOP    strtoul
+#endif
 #define ME_ATOI      atoi
 #define ME_SNPRINTF  snprintf
 #endif
@@ -418,11 +430,15 @@ ME_GetProcessParent(me_void_t);
 
 ME_API me_bool_t
 ME_EnumModulesEx(me_pid_t   pid,
-                 me_bool_t(*callback)(me_module_t mod, me_void_t *arg),
+                 me_bool_t(*callback)(me_pid_t    pid,
+                                      me_module_t mod,
+                                      me_void_t  *arg),
                  me_void_t *arg);
 
 ME_API me_bool_t
-ME_EnumModules(me_bool_t(*callback)(me_module_t mod, me_void_t *arg),
+ME_EnumModules(me_bool_t(*callback)(me_pid_t    pid,
+                                    me_module_t mod,
+                                    me_void_t  *arg),
                me_void_t *arg);
 
 ME_API me_bool_t
@@ -517,13 +533,13 @@ ME_AllocateMemory(me_size_t  size,
                   me_flags_t flags);
 
 ME_API me_bool_t
-ME_DeallocateMemoryEx(me_pid_t     pid,
-                      me_address_t addr,
-                      me_size_t    size);
+ME_FreeMemoryEx(me_pid_t     pid,
+                me_address_t addr,
+                me_size_t    size);
 
 ME_API me_bool_t
-ME_DeallocateMemory(me_address_t addr,
-                    me_size_t    size);
+ME_FreeMemory(me_address_t addr,
+              me_size_t    size);
 
 ME_API me_bool_t
 ME_DetourCodeEx(me_pid_t       pid,

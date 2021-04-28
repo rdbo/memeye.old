@@ -18,6 +18,12 @@ typedef struct _ME_GetProcessExArgs_t
     me_tstring_t proc_ref;
 } _ME_GetProcessExArgs_t;
 
+typedef struct _ME_GetModuleExArgs_t
+{
+    me_module_t *pmod;
+    me_tstring_t mod_ref;
+} _ME_GetModuleExArgs_t;
+
 /****************************************/
 
 ME_API void *
@@ -58,10 +64,13 @@ ME_EnumProcesses(me_bool_t(*callback)(me_pid_t pid, me_void_t *arg),
             entry.dwSize = sizeof(PROCESSENTRY32);
             if (Process32First(hSnap, &entry))
             {
-                while(
-                    callback((me_pid_t)entry.th32ProcessID, arg) != ME_FALSE &&
-                    Process32Next(hSnap, &entry)
-                );
+                do
+                {
+                    me_pid_t pid = (me_pid_t)entry.th32ProcessID;
+                    if (callback(pid, arg) == ME_FALSE)
+                        break;
+                } while(Process32Next(hSnap, &entry));
+
                 ret = ME_TRUE;
             }
 
@@ -118,11 +127,12 @@ static me_bool_t _ME_GetProcessExCallback(me_pid_t   pid,
 {
     _ME_GetProcessExArgs_t *parg = (_ME_GetProcessExArgs_t *)arg;
     me_tchar_t proc_path[ME_PATH_MAX] = { 0 };
-    if (ME_GetProcessPathEx(pid, proc_path, 
-                            ME_ARRLEN(proc_path)))
+    me_size_t proc_path_len;
+    if ((proc_path_len = ME_GetProcessPathEx(pid,
+                                             proc_path,
+                                             ME_ARRLEN(proc_path))))
     {
         me_size_t proc_ref_len = ME_STRLEN(parg->proc_ref);
-        me_size_t proc_path_len = ME_STRLEN(proc_path);
         if (proc_ref_len <= proc_path_len)
         {
             if (!ME_STRCMP(&proc_path[proc_path_len - proc_ref_len], 
@@ -407,9 +417,9 @@ ME_GetProcessParentEx(me_pid_t pid)
     }
 #   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
     {
-        int fd;
         me_tchar_t *status_file = (me_tchar_t *)ME_NULL;
         {
+            int fd;
             me_tchar_t status_path[64] = { 0 };
             me_tchar_t read_buf[1024] = { 0 };
             me_size_t  read_len = ME_ARRLEN(read_buf);
@@ -423,8 +433,10 @@ ME_GetProcessParentEx(me_pid_t pid)
             while((read(fd, read_buf, sizeof(read_buf))) > 0)
             {
                 me_tchar_t *old_status_file = status_file;
-                status_file = ME_calloc((read_len * ++read_count) + 1,
-                                        sizeof(status_file[0]));
+                status_file = (me_tchar_t *)ME_calloc(
+                    (read_len * ++read_count) + 1,
+                    sizeof(status_file[0])
+                );
 
                 if (old_status_file != (me_tchar_t *)ME_NULL)
                 {
@@ -486,6 +498,240 @@ ME_GetProcessParent(me_void_t)
 #   endif
 
     return ppid;
+}
+
+/****************************************/
+
+ME_API me_bool_t
+ME_EnumModulesEx(me_pid_t   pid,
+                 me_bool_t(*callback)(me_pid_t    pid,
+                                      me_module_t mod,
+                                      me_void_t  *arg),
+                 me_void_t *arg)
+{
+    me_bool_t ret = ME_FALSE;
+
+    if (!callback || pid == (me_pid_t)ME_BAD)
+        return ret;
+
+#   if ME_OS == ME_OS_WIN
+    {
+        HANDLE hSnap = CreateToolhelp32Snapshot(
+            TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32,
+            pid
+        );
+
+        if (hSnap != INVALID_HANDLE_VALUE)
+        {
+            MODULEENTRY32 entry;
+            entry.dwSize = sizeof(MODULEENTRY32);
+
+            if (Module32First(hSnap, &entry))
+            {
+                do
+                {
+                    me_module_t mod;
+                    mod.base = (me_address_t)entry.modBaseAddr;
+                    mod.size = (me_size_t)entry.modBaseSize;
+                    mod.end  = (me_address_t)(&((me_byte_t *)mod.base)[mod.size]);
+
+                    if (callback(pid, mod, arg) == ME_FALSE)
+                        break;
+                } while (Module32Next(hSnap, &entry));
+
+                ret = ME_TRUE;
+            }
+        }
+    }
+#   elif ME_OS == ME_OS_LINUX
+    {
+        me_tchar_t *maps_file = (me_tchar_t *)ME_NULL;
+        {
+            int fd;
+            me_tchar_t maps_path[64] = { 0 };
+            me_tchar_t read_buf[1024] = { 0 };
+            me_size_t  read_len = ME_ARRLEN(read_buf);
+            me_size_t  read_count = 0;
+            ME_SNPRINTF(maps_path, ME_ARRLEN(maps_path) - 1,
+                        ME_STR("/proc/%d/maps"), pid);
+            fd = open(maps_path, O_RDONLY);
+            if (fd == -1)
+                return ret;
+
+            while((read(fd, read_buf, sizeof(read_buf))) > 0)
+            {
+                me_tchar_t *old_maps_file = maps_file;
+                maps_file = (me_tchar_t *)ME_calloc(
+                    (read_len * ++read_count) + 1,
+                    sizeof(maps_file[0])
+                );
+
+                if (old_maps_file != (me_tchar_t *)ME_NULL)
+                {
+                    if (maps_file)
+                    {
+                        ME_MEMCPY(
+                            maps_file, old_maps_file,
+                            (read_count - 1) *
+                                read_len *
+                                sizeof(maps_file[0])
+                        );
+                    }
+
+                    ME_free(old_maps_file);
+                }
+
+                if (!maps_file)
+                    return ret;
+
+                ME_MEMCPY(&maps_file[(read_count - 1) * read_len], read_buf, sizeof(read_buf));
+
+                maps_file[read_len] = ME_STR('\00');
+            }
+        }
+
+        {
+            me_tchar_t *mod_path_str;
+            while ((mod_path_str = ME_STRCHR(maps_file, ME_STR('/'))))
+            {
+                me_tchar_t *base_addr_str = maps_file;
+                me_tchar_t *end_addr_str;
+
+                {
+                    me_tchar_t *tmp;
+                    me_tchar_t *mod_path;
+                    me_size_t mod_path_len = ((me_uintptr_t)ME_STRCHR(
+                        mod_path_str, ME_STR('\n')
+                    ) - (me_uintptr_t)mod_path_str) / sizeof(me_tchar_t);
+
+                    mod_path = ME_calloc(mod_path_len + 1, sizeof(me_tchar_t));
+                    if (!mod_path)
+                        break;
+                    
+                    ME_MEMCPY(mod_path,
+                              mod_path_str,
+                              mod_path_len * sizeof(mod_path[0]));
+
+                    for (
+                        tmp = maps_file;
+                        (tmp = ME_STRCHR(tmp, ME_STR('\n'))) &&
+                            (me_uintptr_t)tmp < (me_uintptr_t)mod_path_str;
+                        tmp = &tmp[1], base_addr_str = tmp
+                    );
+
+                    for (
+                        tmp = mod_path_str;
+                        (tmp = ME_STRSTR(tmp, mod_path));
+                        mod_path_str = tmp, tmp = &tmp[1]
+                    );
+
+                    ME_free(mod_path);
+
+                    for (
+                        tmp = maps_file;
+                        (tmp = ME_STRCHR(tmp, ME_STR('\n'))) &&
+                            (me_uintptr_t)tmp < (me_uintptr_t)mod_path_str;
+                        tmp = &tmp[1], end_addr_str = tmp
+                    );
+
+                    end_addr_str = ME_STRCHR(end_addr_str, ME_STR('-'));
+                    end_addr_str = &end_addr_str[1];
+
+                    {
+                        me_module_t mod;
+                        mod.base = (me_address_t)ME_STRTOP(base_addr_str,
+                                                           NULL,
+                                                           16);
+                        mod.end  = (me_address_t)ME_STRTOP(end_addr_str,
+                                                           NULL,
+                                                           16);
+                        mod.size = (me_size_t)(
+                            (me_uintptr_t)mod.end - (me_uintptr_t)mod.base
+                        );
+
+                        if (callback(pid, mod, arg) == ME_FALSE)
+                            break;
+                    }
+
+                    mod_path_str = &mod_path_str[mod_path_len];
+                }
+            }
+
+            ret = ME_TRUE;
+        }
+
+        ME_free(maps_file);
+    }
+#   elif ME_OS == ME_OS_BSD
+    {
+
+    }
+#   endif
+
+    return ret;
+}
+
+ME_API me_bool_t
+ME_EnumModules(me_bool_t(*callback)(me_pid_t    pid,
+                                    me_module_t mod,
+                                    me_void_t  *arg),
+               me_void_t *arg)
+{
+    return ME_EnumModulesEx(ME_GetProcess(), callback, arg);
+}
+
+static me_bool_t
+_ME_GetModuleExCallback(me_pid_t pid,
+                        me_module_t mod,
+                        me_void_t *arg)
+{
+    _ME_GetModuleExArgs_t *parg = (_ME_GetModuleExArgs_t *)arg;
+    me_tchar_t   mod_path[ME_PATH_MAX] = { 0 };
+    me_size_t    mod_path_len;
+    me_size_t    mod_ref_len = ME_STRLEN(parg->mod_ref);
+
+    if ((mod_path_len = ME_GetModulePathEx(pid, mod,
+                                           mod_path, ME_ARRLEN(mod_path))))
+    {
+        if (mod_ref_len <= mod_path_len)
+        {
+            if (!ME_STRCMP(&mod_path[mod_path_len - mod_ref_len], 
+                            parg->mod_ref))
+            {
+                *parg->pmod = mod;
+                return ME_FALSE;
+            }
+        }
+    }
+
+    return ME_TRUE;
+}
+
+ME_API me_bool_t
+ME_GetModuleEx(me_pid_t     pid,
+               me_tstring_t mod_ref,
+               me_module_t *pmod)
+{
+    me_bool_t ret = ME_FALSE;
+    _ME_GetModuleExArgs_t arg;
+    arg.pmod = pmod;
+    arg.mod_ref = mod_ref;
+
+    if (arg.mod_ref && arg.pmod)
+    {
+        ret = ME_EnumModulesEx(pid, 
+                               _ME_GetModuleExCallback,
+                               (me_void_t *)&arg);
+    }
+
+    return ret;
+}
+
+ME_API me_bool_t
+ME_GetModule(me_tstring_t mod_ref,
+             me_module_t *pmod)
+{
+    return ME_GetModuleEx(ME_GetProcess(), mod_ref, pmod);
 }
 
 #endif

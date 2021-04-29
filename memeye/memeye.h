@@ -451,19 +451,25 @@ ME_GetModule(me_tstring_t mod_ref,
              me_module_t *pmod);
 
 ME_API me_size_t
-ME_GetModulePathEx(me_pid_t     pid,
+ME_GetModulePathEx(me_pid_t    pid,
+                   me_module_t mod,
+                   me_tchar_t *mod_path,
+                   me_size_t   max_len);
+
+ME_API me_size_t
+ME_GetModulePath(me_module_t mod,
+                 me_tchar_t *mod_path,
+                 me_size_t   max_len);
+
+ME_API me_size_t
+ME_GetModuleNameEx(me_pid_t     pid,
                    me_module_t  mod,
-                   me_tstring_t mod_path,
+                   me_tchar_t  *mod_name,
                    me_size_t    max_len);
 
 ME_API me_size_t
-ME_GetModulePath(me_module_t  mod,
-                 me_tstring_t mod_path,
-                 me_size_t    max_len);
-
-ME_API me_size_t
 ME_GetModuleName(me_module_t  mod,
-                 me_tstring_t mod_name,
+                 me_tchar_t  *mod_name,
                  me_size_t    max_len);
 
 ME_API me_bool_t
@@ -472,6 +478,13 @@ ME_LoadModuleEx(me_pid_t     pid,
 
 ME_API me_bool_t
 ME_LoadModule(me_tstring_t path);
+
+ME_API me_bool_t
+ME_UnloadModuleEx(me_pid_t    pid,
+                  me_module_t mod);
+
+ME_API me_bool_t
+ME_UnloadModule(me_module_t mod);
 
 /****************************************/
 

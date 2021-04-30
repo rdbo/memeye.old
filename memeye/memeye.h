@@ -432,14 +432,33 @@ ME_API me_bool_t
 ME_EnumModulesEx(me_pid_t   pid,
                  me_bool_t(*callback)(me_pid_t    pid,
                                       me_module_t mod,
-                                      me_void_t  *arg),
+                                      me_void_t  *arg,
+                                      me_void_t  *reserved),
                  me_void_t *arg);
+
+ME_API me_bool_t
+ME_EnumModules2Ex(me_pid_t   pid,
+                  me_bool_t(*callback)(me_pid_t    pid,
+                                       me_module_t mod,
+                                       me_void_t  *arg,
+                                       me_void_t  *reserved),
+                  me_void_t *arg,
+                  me_void_t *reserved);
 
 ME_API me_bool_t
 ME_EnumModules(me_bool_t(*callback)(me_pid_t    pid,
                                     me_module_t mod,
-                                    me_void_t  *arg),
+                                    me_void_t  *arg,
+                                    me_void_t  *reserved),
                me_void_t *arg);
+
+ME_API me_bool_t
+ME_EnumModules2(me_bool_t(*callback)(me_pid_t    pid,
+                                     me_module_t mod,
+                                     me_void_t  *arg,
+                                     me_void_t  *reserved),
+                me_void_t *arg,
+                me_void_t *reserved);
 
 ME_API me_bool_t
 ME_GetModuleEx(me_pid_t     pid,
@@ -447,8 +466,19 @@ ME_GetModuleEx(me_pid_t     pid,
                me_module_t *pmod);
 
 ME_API me_bool_t
+ME_GetModule2Ex(me_pid_t     pid,
+                me_tstring_t mod_ref,
+                me_module_t *pmod,
+                me_void_t   *reserved);
+
+ME_API me_bool_t
 ME_GetModule(me_tstring_t mod_ref,
              me_module_t *pmod);
+
+ME_API me_bool_t
+ME_GetModule2(me_tstring_t mod_ref,
+              me_module_t *pmod,
+              me_void_t   *reserved);
 
 ME_API me_size_t
 ME_GetModulePathEx(me_pid_t    pid,
@@ -457,9 +487,22 @@ ME_GetModulePathEx(me_pid_t    pid,
                    me_size_t   max_len);
 
 ME_API me_size_t
+ME_GetModulePath2Ex(me_pid_t    pid,
+                    me_module_t mod,
+                    me_tchar_t *mod_path,
+                    me_size_t   max_len,
+                    me_void_t  *reserved);
+
+ME_API me_size_t
 ME_GetModulePath(me_module_t mod,
                  me_tchar_t *mod_path,
                  me_size_t   max_len);
+
+ME_API me_size_t
+ME_GetModulePath2(me_module_t mod,
+                  me_tchar_t *mod_path,
+                  me_size_t   max_len,
+                  me_void_t  *reserved);
 
 ME_API me_size_t
 ME_GetModuleNameEx(me_pid_t     pid,

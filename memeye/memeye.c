@@ -997,4 +997,128 @@ ME_GetModuleName(me_module_t mod,
     return chr_count;
 }
 
+ME_API me_bool_t
+ME_LoadModuleEx(me_pid_t     pid,
+                me_tstring_t path)
+{
+    me_bool_t ret = ME_FALSE;
+#   if ME_OS == ME_OS_WIN
+    {
+        ret = ME_LoadModule2Ex(pid, path, (me_void_t *)ME_NULL);
+    }
+#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
+    {
+        int mode = RTLD_LAZY;
+        ret = ME_LoadModule2Ex(pid, path, (me_void_t *)&mode);
+    }
+#   endif
+
+    return ret;
+}
+
+ME_API me_bool_t
+ME_LoadModule2Ex(me_pid_t     pid,
+                 me_tstring_t path,
+                 me_void_t   *reserved)
+{
+    me_bool_t ret = ME_FALSE;
+
+    if (!path)
+        return ret;
+
+#   if ME_OS == ME_OS_WIN
+    {
+
+    }
+#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
+    {
+
+    }
+#   endif
+
+    return ret;
+}
+
+ME_API me_bool_t
+ME_LoadModule(me_tstring_t path)
+{
+    me_bool_t ret = ME_FALSE;
+
+    if (!path)
+        return ret;
+
+#   if ME_OS == ME_OS_WIN
+    {
+        ret = ME_LoadModule2(path, (me_void_t *)ME_NULL);
+    }
+#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
+    {
+        int mode = RTLD_LAZY;
+        ret = ME_LoadModule2(path, (me_void_t *)&mode);
+    }
+#   endif
+
+    return ret;
+}
+
+ME_API me_bool_t
+ME_LoadModule2(me_tstring_t path,
+               me_void_t   *reserved)
+{
+    me_bool_t ret = ME_FALSE;
+
+    if (!path)
+        return ret;
+
+#   if ME_OS == ME_OS_WIN
+    {
+        ret = (LoadLibrary(path) != NULL) ? ME_TRUE : ME_FALSE;
+    }
+#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
+    {
+        int *pmode = (int *)reserved;
+        ret = dlopen(path, *pmode);
+    }
+#   endif
+
+    return ret;
+}
+
+ME_API me_bool_t
+ME_UnloadModuleEx(me_pid_t    pid,
+                  me_module_t mod)
+{
+    me_bool_t ret = ME_FALSE;
+#   if ME_OS == ME_OS_WIN
+    {
+
+    }
+#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_LINUX
+    {
+
+    }
+#   endif
+
+    return ret;
+}
+
+ME_API me_bool_t
+ME_UnloadModule(me_module_t mod)
+{
+    me_bool_t ret = ME_FALSE;
+#   if ME_OS == ME_OS_WIN
+    {
+        HMODULE hModule = (HMODULE)NULL;
+        GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPTSTR)mod.base, &hModule);
+        if (!hModule)
+            return chr_count;
+        ret = FreeLibrary(hModule) ? ME_TRUE : ME_FALSE;
+    }
+#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
+    {
+        
+    }
+#   endif
+}
+
 #endif

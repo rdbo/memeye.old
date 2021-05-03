@@ -326,7 +326,7 @@ typedef struct me_page_t
 	me_address_t base;
 	me_size_t    size;
 	me_address_t end;
-	me_prot_t    protection;
+	me_prot_t    prot;
     me_flags_t   flags;
 } me_page_t;
 
@@ -513,9 +513,22 @@ ME_GetModuleNameEx(me_pid_t    pid,
                    me_size_t   max_len);
 
 ME_API me_size_t
+ME_GetModuleName2Ex(me_pid_t    pid,
+                    me_module_t mod,
+                    me_tchar_t *mod_name,
+                    me_size_t   max_len,
+                    me_void_t  *reserved);
+
+ME_API me_size_t
 ME_GetModuleName(me_module_t mod,
                  me_tchar_t *mod_name,
                  me_size_t   max_len);
+
+ME_API me_size_t
+ME_GetModuleName2(me_module_t mod,
+                  me_tchar_t *mod_name,
+                  me_size_t   max_len,
+                  me_void_t  *reserved);
 
 ME_API me_bool_t
 ME_LoadModuleEx(me_pid_t     pid,
@@ -546,24 +559,29 @@ ME_API me_bool_t
 ME_EnumPagesEx(me_pid_t   pid,
                me_bool_t(*callback)(me_pid_t   pid,
                                     me_page_t  page,
-                                    me_void_t *arg,
-                                    me_void_t *reserved),
+                                    me_void_t *arg),
                me_void_t *arg);
 
 ME_API me_bool_t
 ME_EnumPages2Ex(me_pid_t   pid,
                 me_bool_t(*callback)(me_pid_t   pid,
                                      me_page_t  page,
-                                     me_void_t *arg,
-                                     me_void_t *reserved),
+                                     me_void_t *arg),
                 me_void_t *arg,
                 me_void_t *reserved);
 
 ME_API me_bool_t
 ME_EnumPages(me_bool_t(*callback)(me_pid_t   pid,
                                   me_page_t  page,
-                                  me_void_t *arg,
-                                  me_void_t *reserved));
+                                  me_void_t *arg),
+             me_void_t *arg);
+
+ME_API me_bool_t
+ME_EnumPages2(me_bool_t(*callback)(me_pid_t   pid,
+                                   me_page_t  page,
+                                   me_void_t *arg),
+              me_void_t *arg,
+              me_void_t *reserved);
 
 ME_API me_bool_t
 ME_GetPageEx(me_pid_t     pid,

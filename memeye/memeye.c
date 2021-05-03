@@ -24,6 +24,12 @@ typedef struct _ME_GetModuleExArgs_t
     me_tstring_t mod_ref;
 } _ME_GetModuleExArgs_t;
 
+typedef struct _ME_GetPageExArgs_t
+{
+    me_page_t *ppage;
+    me_address_t addr;
+} _ME_GetPageExArgs_t;
+
 /****************************************/
 
 ME_API void *
@@ -843,6 +849,10 @@ ME_GetModulePathEx(me_pid_t    pid,
                    me_size_t   max_len)
 {
     me_size_t chr_count = 0;
+
+    if (!mod_path || max_len == 0)
+        return chr_count;
+
 #   if ME_OS == ME_OS_WIN
     {
         chr_count = ME_GetModulePath2Ex(pid, mod, mod_path,
@@ -936,6 +946,10 @@ ME_GetModulePath2Ex(me_pid_t    pid,
                     me_void_t  *reserved)
 {
     me_size_t chr_count = 0;
+
+    if (!mod_path || max_len == 0)
+        return chr_count;
+
 #   if ME_OS == ME_OS_WIN
     {
         HANDLE hSnap = CreateToolhelp32Snapshot(
@@ -1048,6 +1062,10 @@ ME_GetModulePath2(me_module_t mod,
                   me_void_t  *reserved)
 {
     me_size_t chr_count = 0;
+
+    if (!mod_path || max_len == 0)
+        return chr_count;
+
 #   if ME_OS == ME_OS_WIN
     {
         HMODULE hModule = (HMODULE)NULL;
@@ -1076,6 +1094,59 @@ ME_GetModuleNameEx(me_pid_t    pid,
                    me_size_t   max_len)
 {
     me_size_t chr_count = 0;
+
+    if (!mod_name || max_len == 0)
+        return chr_count;
+
+#   if ME_OS == ME_OS_WIN
+    {
+        chr_count = ME_GetModuleName2Ex(pid, mod, mod_name,
+                                        max_len, (me_void_t *)ME_NULL);
+    }
+#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
+    {
+        me_tchar_t mod_path[ME_PATH_MAX] = { 0 };
+        if (ME_GetModulePathEx(pid, mod, mod_path, ME_ARRLEN(mod_path)))
+        {
+            me_tchar_t path_chr;
+            me_tchar_t *tmp;
+            me_tchar_t *file_str;
+
+#           if ME_OS == ME_OS_WIN
+            path_chr = ME_STR('\\');
+#           elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
+            path_chr = ME_STR('/');
+#           endif
+
+            for (tmp = mod_path;
+                    (tmp = ME_STRCHR(tmp, path_chr));
+                    tmp = &tmp[1], file_str = tmp);
+
+            chr_count = ME_STRLEN(file_str);
+            if (chr_count > max_len)
+                chr_count = max_len;
+
+            ME_MEMCPY((void *)mod_name, (void *)file_str,
+                        chr_count * sizeof(mod_name[0]));
+        }
+    }
+#   endif
+
+    return chr_count;
+}
+
+ME_API me_size_t
+ME_GetModuleName2Ex(me_pid_t    pid,
+                    me_module_t mod,
+                    me_tchar_t *mod_name,
+                    me_size_t   max_len,
+                    me_void_t  *reserved)
+{
+    me_size_t chr_count = 0;
+
+    if (!mod_name || max_len == 0)
+        return chr_count;
+
 #   if ME_OS == ME_OS_WIN
     {
         HANDLE hSnap = CreateToolhelp32Snapshot(
@@ -1104,38 +1175,38 @@ ME_GetModuleNameEx(me_pid_t    pid,
                         break;
                     }
                 } while (Module32Next(hSnap, &entry));
-
-                ret = ME_TRUE;
             }
         }
     }
 #   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
-    me_tchar_t mod_path[ME_PATH_MAX] = { 0 };
-    if (ME_GetModulePathEx(pid, mod, mod_path, ME_ARRLEN(mod_path)))
     {
-        me_tchar_t path_chr;
-        me_tchar_t *tmp;
-        me_tchar_t *file_str;
+        me_tchar_t mod_path[ME_PATH_MAX] = { 0 };
+        if (ME_GetModulePath2Ex(pid, mod, mod_path, 
+                                ME_ARRLEN(mod_path), reserved))
+        {
+            me_tchar_t path_chr;
+            me_tchar_t *tmp;
+            me_tchar_t *file_str;
 
-#       if ME_OS == ME_OS_WIN
-        path_chr = ME_STR('\\');
-#       elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
-        path_chr = ME_STR('/');
-#       endif
+#           if ME_OS == ME_OS_WIN
+            path_chr = ME_STR('\\');
+#           elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
+            path_chr = ME_STR('/');
+#           endif
 
-        for (tmp = mod_path;
-                (tmp = ME_STRCHR(tmp, path_chr));
-                tmp = &tmp[1], file_str = tmp);
+            for (tmp = mod_path;
+                    (tmp = ME_STRCHR(tmp, path_chr));
+                    tmp = &tmp[1], file_str = tmp);
 
-        chr_count = ME_STRLEN(file_str);
-        if (chr_count > max_len)
-            chr_count = max_len;
+            chr_count = ME_STRLEN(file_str);
+            if (chr_count > max_len)
+                chr_count = max_len;
 
-        ME_MEMCPY((void *)mod_name, (void *)file_str,
-                    chr_count * sizeof(mod_name[0]));
+            ME_MEMCPY((void *)mod_name, (void *)file_str,
+                        chr_count * sizeof(mod_name[0]));
+        }
     }
 #   endif
-
 
     return chr_count;
 }
@@ -1147,6 +1218,7 @@ ME_GetModuleName(me_module_t mod,
 {
     me_size_t chr_count = 0;
     me_tchar_t mod_path[ME_PATH_MAX] = { 0 };
+
     if (ME_GetModulePath(mod, mod_path, ME_ARRLEN(mod_path)))
     {
         me_tchar_t path_chr;
@@ -1171,6 +1243,41 @@ ME_GetModuleName(me_module_t mod,
                     chr_count * sizeof(mod_name[0]));
     }
 
+    return chr_count;
+}
+
+ME_API me_size_t
+ME_GetModuleName2(me_module_t mod,
+                  me_tchar_t *mod_name,
+                  me_size_t   max_len,
+                  me_void_t  *reserved)
+{
+    me_size_t chr_count = 0;
+    me_tchar_t mod_path[ME_PATH_MAX] = { 0 };
+
+    if (ME_GetModulePath2(mod, mod_path, ME_ARRLEN(mod_path), reserved))
+    {
+        me_tchar_t path_chr;
+        me_tchar_t *tmp;
+        me_tchar_t *file_str;
+
+#       if ME_OS == ME_OS_WIN
+        path_chr = ME_STR('\\');
+#       elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
+        path_chr = ME_STR('/');
+#       endif
+
+        for (tmp = mod_path;
+                (tmp = ME_STRCHR(tmp, path_chr));
+                tmp = &tmp[1], file_str = tmp);
+
+        chr_count = ME_STRLEN(file_str);
+        if (chr_count > max_len)
+            chr_count = max_len;
+
+        ME_MEMCPY((void *)mod_name, (void *)file_str,
+                    chr_count * sizeof(mod_name[0]));
+    }
 
     return chr_count;
 }
@@ -1315,5 +1422,281 @@ ME_UnloadModule(me_module_t mod)
 
 /****************************************/
 
+ME_API me_bool_t
+ME_EnumPagesEx(me_pid_t   pid,
+               me_bool_t(*callback)(me_pid_t   pid,
+                                    me_page_t  page,
+                                    me_void_t *arg),
+               me_void_t *arg)
+{
+    me_bool_t ret = ME_FALSE;
+
+    if (!callback)
+        return ret;
+
+#   if ME_OS == ME_OS_WIN
+    {
+        ret = ME_EnumPages2Ex(pid, callback, arg, (me_void_t *)ME_NULL);
+    }
+#   elif ME_OS == ME_OS_LINUX
+    {
+        me_tchar_t *maps_file = (me_tchar_t *)ME_NULL;
+        {
+            int fd;
+            me_tchar_t maps_path[64] = { 0 };
+            me_tchar_t read_buf[1024] = { 0 };
+            me_size_t  read_len = ME_ARRLEN(read_buf);
+            me_size_t  read_count = 0;
+            me_tchar_t *old_maps_file;
+
+            ME_SNPRINTF(maps_path, ME_ARRLEN(maps_path) - 1,
+                        ME_STR("/proc/%d/maps"), pid);
+            fd = open(maps_path, O_RDONLY);
+            if (fd == -1)
+                return ret;
+
+            while((read(fd, read_buf, sizeof(read_buf))) > 0)
+            {
+                old_maps_file = maps_file;
+                maps_file = (me_tchar_t *)ME_calloc(
+                    read_len * (++read_count),
+                    sizeof(maps_file[0])
+                );
+
+                if (old_maps_file != (me_tchar_t *)ME_NULL)
+                {
+                    if (maps_file)
+                    {
+                        ME_MEMCPY(
+                            maps_file, old_maps_file,
+                            (read_count - 1) *
+                                read_len *
+                                sizeof(maps_file[0])
+                        );
+                    }
+
+                    ME_free(old_maps_file);
+                }
+
+                if (!maps_file)
+                    return ret;
+
+                ME_MEMCPY(&maps_file[(read_count - 1) * read_len], 
+                          read_buf, sizeof(read_buf));
+            }
+
+            old_maps_file = maps_file;
+            maps_file = ME_calloc(
+                    (read_len * read_count) + 1,
+                    sizeof(maps_file[0])
+            );
+
+            if (maps_file)
+            {
+                ME_MEMCPY(maps_file, old_maps_file,
+                          read_len * read_count);
+                maps_file[(read_len * read_count)] = ME_STR('\00');
+            }
+
+            ME_free(old_maps_file);
+
+            if (!maps_file)
+                return ret;
+        }
+
+        ret = ME_EnumPages2Ex(pid, callback, arg, (me_void_t *)maps_file);
+
+        ME_free(maps_file);
+    }
+#   elif ME_OS == ME_OS_BSD
+    {
+
+    }
+#   endif
+
+    return ret;
+}
+
+ME_API me_bool_t
+ME_EnumPages2Ex(me_pid_t   pid,
+                me_bool_t(*callback)(me_pid_t   pid,
+                                     me_page_t  page,
+                                     me_void_t *arg),
+                me_void_t *arg,
+                me_void_t *reserved)
+{
+    me_bool_t ret = ME_FALSE;
+
+    if (!callback)
+        return ret;
+
+#   if ME_OS == ME_OS_WIN
+    {
+
+    }
+#   elif ME_OS == ME_OS_LINUX
+    {
+        me_tchar_t *maps_file = (me_tchar_t *)reserved;
+
+        if (!maps_file)
+            return ret;
+
+        {
+            me_tchar_t *page_base_ptr;
+            
+            for (page_base_ptr = maps_file;
+                 page_base_ptr;
+                 page_base_ptr = ME_STRCHR(&page_base_ptr[1], ME_STR('\n')))
+            {
+                me_page_t page;
+                me_tchar_t *page_end_ptr;
+                me_tchar_t *page_info_ptr;
+
+                page_end_ptr = ME_STRCHR(page_base_ptr, ME_STR('-'));
+                page_end_ptr = &page_end_ptr[1];
+
+                page.base = (me_address_t)ME_STRTOP(&page_base_ptr[1],
+                                                    NULL,
+                                                    16);
+                
+                page.end  = (me_address_t)ME_STRTOP(page_end_ptr, NULL, 16);
+                page.size = (me_size_t)((me_uintptr_t)page.end -
+                                        (me_uintptr_t)page.base);
+
+                page_info_ptr = ME_STRCHR(page_end_ptr, ME_STR(' '));
+                page_info_ptr = &page_info_ptr[1];
+
+                page.prot  = 0;
+                page.flags = 0;
+
+                {
+                    me_tchar_t *c;
+                    for (c = page_info_ptr; c != &page_info_ptr[4]; c = &c[1])
+                    {
+                        switch (*c)
+                        {
+                        case ME_STR('r'):
+                            page.prot |= PROT_READ;
+                            break;
+                        case ME_STR('w'):
+                            page.prot |= PROT_WRITE;
+                            break;
+                        case ME_STR('x'):
+                            page.prot |= PROT_EXEC;
+                            break;
+                        case ME_STR('s'):
+                            page.flags = MAP_SHARED;
+                            break;
+                        case ME_STR('p'):
+                            page.flags = MAP_PRIVATE;
+                            break;
+                        }
+                    }
+                }
+
+                if (callback(pid, page, arg) == ME_FALSE)
+                    break;
+            }
+        }
+    }
+#   elif ME_OS == ME_OS_BSD
+    {
+
+    }
+#   endif
+
+    return ret;
+}
+
+ME_API me_bool_t
+ME_EnumPages(me_bool_t(*callback)(me_pid_t   pid,
+                                  me_page_t  page,
+                                  me_void_t *arg),
+             me_void_t *arg)
+{
+    return ME_EnumPagesEx(ME_GetProcess(), callback, arg);
+}
+
+ME_API me_bool_t
+ME_EnumPages2(me_bool_t(*callback)(me_pid_t   pid,
+                                   me_page_t  page,
+                                   me_void_t *arg),
+              me_void_t *arg,
+              me_void_t *reserved)
+{
+    return ME_EnumPages2Ex(ME_GetProcess(), callback, arg, reserved);
+}
+
+static me_bool_t
+_ME_GetPageExCallback(me_pid_t   pid,
+                      me_page_t  page,
+                      me_void_t *arg)
+{
+    _ME_GetPageExArgs_t *parg = (_ME_GetPageExArgs_t *)arg;
+    me_uintptr_t page_base = (me_uintptr_t)page.base;
+    me_uintptr_t page_end  = (me_uintptr_t)page.end;
+    me_uintptr_t addr = (me_uintptr_t)parg->addr;
+
+    if (addr >= page_base && addr < page_end)
+    {
+        *parg->ppage = page;
+        return ME_FALSE;
+    }
+
+    return ME_TRUE;
+}
+
+ME_API me_bool_t
+ME_GetPageEx(me_pid_t     pid,
+             me_address_t addr,
+             me_page_t   *ppage)
+{
+    me_bool_t ret = ME_FALSE;
+    _ME_GetPageExArgs_t arg;
+    arg.addr = addr;
+    arg.ppage = ppage;
+
+    if (!arg.ppage)
+        return ret;
+
+    ret = ME_EnumPagesEx(pid, _ME_GetPageExCallback, (me_void_t *)&arg);
+
+    return ret;
+}
+
+ME_API me_bool_t
+ME_GetPage2Ex(me_pid_t     pid,
+              me_address_t addr,
+              me_page_t   *ppage,
+              me_void_t   *reserved)
+{
+    me_bool_t ret = ME_FALSE;
+    _ME_GetPageExArgs_t arg;
+    arg.addr = addr;
+    arg.ppage = ppage;
+
+    if (!arg.ppage)
+        return ret;
+
+    ret = ME_EnumPages2Ex(pid, _ME_GetPageExCallback,
+                          (me_void_t *)&arg, reserved);
+
+    return ret;
+}
+
+ME_API me_bool_t
+ME_GetPage(me_address_t addr,
+           me_page_t   *ppage)
+{
+    return ME_GetPageEx(ME_GetProcess(), addr, ppage);
+}
+
+ME_API me_bool_t
+ME_GetPage2(me_address_t addr,
+            me_page_t   *ppage,
+            me_void_t   *reserved)
+{
+    return ME_GetPage2Ex(ME_GetProcess(), addr, ppage, reserved);
+}
 
 #endif

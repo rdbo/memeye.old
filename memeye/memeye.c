@@ -528,6 +528,8 @@ ME_EnumModulesEx(me_pid_t   pid,
             me_tchar_t read_buf[1024] = { 0 };
             me_size_t  read_len = ME_ARRLEN(read_buf);
             me_size_t  read_count = 0;
+            me_tchar_t *old_maps_file;
+
             ME_SNPRINTF(maps_path, ME_ARRLEN(maps_path) - 1,
                         ME_STR("/proc/%d/maps"), pid);
             fd = open(maps_path, O_RDONLY);
@@ -536,9 +538,9 @@ ME_EnumModulesEx(me_pid_t   pid,
 
             while((read(fd, read_buf, sizeof(read_buf))) > 0)
             {
-                me_tchar_t *old_maps_file = maps_file;
+                old_maps_file = maps_file;
                 maps_file = (me_tchar_t *)ME_calloc(
-                    (read_len * ++read_count) + 1,
+                    read_len * (++read_count),
                     sizeof(maps_file[0])
                 );
 
@@ -560,10 +562,27 @@ ME_EnumModulesEx(me_pid_t   pid,
                 if (!maps_file)
                     return ret;
 
-                ME_MEMCPY(&maps_file[(read_count - 1) * read_len], read_buf, sizeof(read_buf));
-
-                maps_file[read_len - 1] = ME_STR('\00');
+                ME_MEMCPY(&maps_file[(read_count - 1) * read_len], 
+                          read_buf, sizeof(read_buf));
             }
+
+            old_maps_file = maps_file;
+            maps_file = ME_calloc(
+                    (read_len * read_count) + 1,
+                    sizeof(maps_file[0])
+            );
+
+            if (maps_file)
+            {
+                ME_MEMCPY(maps_file, old_maps_file,
+                          read_len * read_count);
+                maps_file[(read_len * read_count)] = ME_STR('\00');
+            }
+
+            ME_free(old_maps_file);
+
+            if (!maps_file)
+                return ret;
         }
 
         ret = ME_EnumModules2Ex(pid, callback, arg, (me_void_t *)maps_file);
@@ -836,6 +855,8 @@ ME_GetModulePathEx(me_pid_t    pid,
             me_tchar_t read_buf[1024] = { 0 };
             me_size_t  read_len = ME_ARRLEN(read_buf);
             me_size_t  read_count = 0;
+            me_tchar_t *old_maps_file;
+
             ME_SNPRINTF(maps_path, ME_ARRLEN(maps_path) - 1,
                         ME_STR("/proc/%d/maps"), pid);
             fd = open(maps_path, O_RDONLY);
@@ -844,9 +865,9 @@ ME_GetModulePathEx(me_pid_t    pid,
 
             while((read(fd, read_buf, sizeof(read_buf))) > 0)
             {
-                me_tchar_t *old_maps_file = maps_file;
+                old_maps_file = maps_file;
                 maps_file = (me_tchar_t *)ME_calloc(
-                    (read_len * ++read_count) + 1,
+                    read_len * (++read_count),
                     sizeof(maps_file[0])
                 );
 
@@ -868,12 +889,27 @@ ME_GetModulePathEx(me_pid_t    pid,
                 if (!maps_file)
                     return chr_count;
 
-                ME_MEMCPY(&maps_file[(read_count - 1) * read_len],
-                          read_buf,
-                          sizeof(read_buf));
-
-                maps_file[read_len - 1] = ME_STR('\00');
+                ME_MEMCPY(&maps_file[(read_count - 1) * read_len], 
+                          read_buf, sizeof(read_buf));
             }
+
+            old_maps_file = maps_file;
+            maps_file = ME_calloc(
+                    (read_len * read_count) + 1,
+                    sizeof(maps_file[0])
+            );
+
+            if (maps_file)
+            {
+                ME_MEMCPY(maps_file, old_maps_file,
+                          read_len * read_count);
+                maps_file[(read_len * read_count)] = ME_STR('\00');
+            }
+
+            ME_free(old_maps_file);
+
+            if (!maps_file)
+                return chr_count;
         }
 
         chr_count = ME_GetModulePath2Ex(pid, mod, mod_path,
@@ -1250,11 +1286,26 @@ ME_UnloadModule(me_module_t mod)
     }
 #   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
     {
+        me_tchar_t mod_path[ME_PATH_MAX] = { 0 };
 
+        if (ME_GetModulePath(mod, mod_path, ME_ARRLEN(mod_path)))
+        {
+            void *handle = dlopen(mod_path, RTLD_NOW | RTLD_NOLOAD);
+
+            if (handle)
+            {
+                ret = !dlclose(handle) ? ME_TRUE : ME_FALSE;
+            }
+        }
     }
 #   endif
 
     return ret;
 }
+
+/****************************************/
+
+
+
 
 #endif

@@ -541,13 +541,47 @@ ME_UnloadModule(me_module_t mod);
 /****************************************/
 
 ME_API me_bool_t
+ME_EnumPagesEx(me_pid_t   pid,
+               me_bool_t(*callback)(me_pid_t   pid,
+                                    me_page_t  page,
+                                    me_void_t *arg,
+                                    me_void_t *reserved),
+               me_void_t *arg);
+
+ME_API me_bool_t
+ME_EnumPages2Ex(me_pid_t   pid,
+                me_bool_t(*callback)(me_pid_t   pid,
+                                     me_page_t  page,
+                                     me_void_t *arg,
+                                     me_void_t *reserved),
+                me_void_t *arg,
+                me_void_t *reserved);
+
+ME_API me_bool_t
+ME_EnumPages(me_bool_t(*callback)(me_pid_t   pid,
+                                  me_page_t  page,
+                                  me_void_t *arg,
+                                  me_void_t *reserved));
+
+ME_API me_bool_t
 ME_GetPageEx(me_pid_t     pid,
              me_address_t addr,
              me_page_t   *ppage);
 
 ME_API me_bool_t
+ME_GetPage2Ex(me_pid_t     pid,
+              me_address_t addr,
+              me_page_t   *ppage,
+              me_void_t   *reserved);
+
+ME_API me_bool_t
 ME_GetPage(me_address_t addr,
            me_page_t   *ppage);
+
+ME_API me_bool_t
+ME_GetPage2(me_address_t addr,
+            me_page_t   *ppage,
+            me_void_t   *reserved);
 
 /****************************************/
 

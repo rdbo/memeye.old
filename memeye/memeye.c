@@ -795,7 +795,7 @@ ME_GetModuleEx(me_pid_t     pid,
     arg.pmod = pmod;
     arg.mod_ref = mod_ref;
 
-    if (arg.mod_ref && arg.pmod)
+    if (arg.mod_ref && arg.pmod && pid != (me_pid_t)ME_BAD)
     {
         ret = ME_EnumModulesEx(pid, 
                                _ME_GetModuleExCallback,
@@ -816,7 +816,7 @@ ME_GetModule2Ex(me_pid_t     pid,
     arg.pmod = pmod;
     arg.mod_ref = mod_ref;
 
-    if (arg.mod_ref && arg.pmod)
+    if (arg.mod_ref && arg.pmod && pid != (me_pid_t)ME_BAD)
     {
         ret = ME_EnumModules2Ex(pid, 
                                 _ME_GetModuleExCallback,
@@ -850,7 +850,7 @@ ME_GetModulePathEx(me_pid_t    pid,
 {
     me_size_t chr_count = 0;
 
-    if (!mod_path || max_len == 0)
+    if (!mod_path || max_len == 0 || pid == (me_pid_t)ME_BAD)
         return chr_count;
 
 #   if ME_OS == ME_OS_WIN
@@ -947,7 +947,7 @@ ME_GetModulePath2Ex(me_pid_t    pid,
 {
     me_size_t chr_count = 0;
 
-    if (!mod_path || max_len == 0)
+    if (!mod_path || max_len == 0 || pid == (me_pid_t)ME_BAD)
         return chr_count;
 
 #   if ME_OS == ME_OS_WIN
@@ -1424,8 +1424,7 @@ ME_UnloadModule(me_module_t mod)
 
 ME_API me_bool_t
 ME_EnumPagesEx(me_pid_t   pid,
-               me_bool_t(*callback)(me_pid_t   pid,
-                                    me_page_t  page,
+               me_bool_t(*callback)(me_page_t  page,
                                     me_void_t *arg),
                me_void_t *arg)
 {
@@ -1519,15 +1518,14 @@ ME_EnumPagesEx(me_pid_t   pid,
 
 ME_API me_bool_t
 ME_EnumPages2Ex(me_pid_t   pid,
-                me_bool_t(*callback)(me_pid_t   pid,
-                                     me_page_t  page,
+                me_bool_t(*callback)(me_page_t  page,
                                      me_void_t *arg),
                 me_void_t *arg,
                 me_void_t *reserved)
 {
     me_bool_t ret = ME_FALSE;
 
-    if (!callback)
+    if (!callback || pid == (me_pid_t)ME_BAD)
         return ret;
 
 #   if ME_OS == ME_OS_WIN
@@ -1594,7 +1592,7 @@ ME_EnumPages2Ex(me_pid_t   pid,
                     }
                 }
 
-                if (callback(pid, page, arg) == ME_FALSE)
+                if (callback(page, arg) == ME_FALSE)
                     break;
             }
         }
@@ -1609,8 +1607,7 @@ ME_EnumPages2Ex(me_pid_t   pid,
 }
 
 ME_API me_bool_t
-ME_EnumPages(me_bool_t(*callback)(me_pid_t   pid,
-                                  me_page_t  page,
+ME_EnumPages(me_bool_t(*callback)(me_page_t  page,
                                   me_void_t *arg),
              me_void_t *arg)
 {
@@ -1618,8 +1615,7 @@ ME_EnumPages(me_bool_t(*callback)(me_pid_t   pid,
 }
 
 ME_API me_bool_t
-ME_EnumPages2(me_bool_t(*callback)(me_pid_t   pid,
-                                   me_page_t  page,
+ME_EnumPages2(me_bool_t(*callback)(me_page_t  page,
                                    me_void_t *arg),
               me_void_t *arg,
               me_void_t *reserved)
@@ -1628,8 +1624,7 @@ ME_EnumPages2(me_bool_t(*callback)(me_pid_t   pid,
 }
 
 static me_bool_t
-_ME_GetPageExCallback(me_pid_t   pid,
-                      me_page_t  page,
+_ME_GetPageExCallback(me_page_t  page,
                       me_void_t *arg)
 {
     _ME_GetPageExArgs_t *parg = (_ME_GetPageExArgs_t *)arg;
@@ -1760,7 +1755,7 @@ ME_ReadMemoryEx(me_pid_t     pid,
     return byte_count;
 }
 
-ME_API me_bool_t
+ME_API me_size_t
 ME_ReadMemory(me_address_t src,
               me_byte_t   *dst,
               me_size_t    size)
@@ -1772,13 +1767,13 @@ ME_ReadMemory(me_address_t src,
     return i;
 }
 
-ME_API me_bool_t
+ME_API me_size_t
 ME_WriteMemoryEx(me_pid_t     pid,
                  me_address_t dst,
                  me_byte_t   *src,
                  me_size_t    size)
 {
-    me_byte_t byte_count = 0;
+    me_size_t byte_count = 0;
 
     if (size == 0)
         return byte_count;
@@ -1827,9 +1822,11 @@ ME_WriteMemoryEx(me_pid_t     pid,
             byte_count = 0;
     }
 #   endif
+
+    return byte_count;
 }
 
-ME_API me_bool_t
+ME_API me_size_t
 ME_WriteMemory(me_address_t dst,
                me_byte_t   *src,
                me_size_t    size)
@@ -1849,15 +1846,87 @@ ME_ProtectMemoryEx(me_pid_t     pid,
                    me_prot_t   *old_prot)
 {
     me_bool_t ret = ME_FALSE;
+    me_prot_t old_protection = 0;
+    
 #   if ME_OS == ME_OS_WIN
     {
-
+        ret = ME_ProtectMemory2Ex(pid, addr, size, prot, (me_void_t *)ME_NULL);
     }
 #   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
     {
-        
+        me_page_t page;
+
+        if (!ME_GetPageEx(pid, addr, &page))
+            return ret;
+
+        old_protection = page.prot;
+
+        ret = (
+            !ME_SyscallEx(pid,
+                          __NR_mprotect,
+                          (me_void_t *)page.base,
+                          (me_void_t *)size,
+                          (me_void_t *)(me_uintptr_t)prot,
+                          (me_void_t *)ME_NULL,
+                          (me_void_t *)ME_NULL,
+                          (me_void_t *)ME_NULL)
+        ) ? ME_TRUE : ME_FALSE;
     }
 #   endif
+
+    if (old_prot)
+        *old_prot = old_protection;
+}
+
+ME_API me_bool_t
+ME_ProtectMemory2Ex(me_pid_t     pid,
+                    me_address_t addr,
+                    me_size_t    size,
+                    me_prot_t    prot,
+                    me_prot_t   *old_prot,
+                    me_void_t   *reserved)
+{
+    me_bool_t ret = ME_FALSE;
+    me_prot_t old_protection = 0;
+
+#   if ME_OS == ME_OS_WIN
+    {
+        HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
+
+        if (!hProcess)
+            return ret;
+
+        ret = VirtualProtectEx(hProcess, addr, size,
+                               prot, &old_protection) ? ME_TRUE : ME_FALSE;
+
+        CloseHandle(hProcess);
+    }
+#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
+    {
+        me_page_t page;
+
+        if (!ME_GetPage2Ex(pid, addr, &page, reserved))
+            return ret;
+
+        old_protection = page.prot;
+
+        ret = (
+            !ME_SyscallEx(pid,
+                          __NR_mprotect,
+                          (me_void_t *)page.base,
+                          (me_void_t *)size,
+                          (me_void_t *)(me_uintptr_t)prot,
+                          (me_void_t *)ME_NULL,
+                          (me_void_t *)ME_NULL,
+                          (me_void_t *)ME_NULL)
+        ) ? ME_TRUE : ME_FALSE;
+    }
+#   endif
+
+    if (old_prot)
+        *old_prot = old_protection;
+
+    return ret;
 }
 
 ME_API me_bool_t
@@ -1871,13 +1940,46 @@ ME_ProtectMemory(me_address_t addr,
 
 #   if ME_OS == ME_OS_WIN
     {
+        ret = ME_ProtectMemory2(addr, size, prot,
+                                old_prot, (me_void_t *)ME_NULL);
+    }
+#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
+    {
+        me_page_t page;
+
+        if (!ME_GetPage(addr, &page))
+            return ret;
+
+        ret = !mprotect(page.base, size, prot) ? ME_TRUE : ME_FALSE;
+    }
+#   endif
+
+    if (old_prot)
+        *old_prot = old_protection;
+    
+    return ret;
+}
+
+ME_API me_bool_t
+ME_ProtectMemory2(me_address_t addr,
+                  me_size_t    size,
+                  me_prot_t    prot,
+                  me_prot_t   *old_prot,
+                  me_void_t   *reserved)
+{
+    me_bool_t ret = ME_FALSE;
+    me_prot_t old_protection = 0;
+
+#   if ME_OS == ME_OS_WIN
+    {
         ret = VirtualProtect(addr, size,
                              prot, old_protection) != 0 ? ME_TRUE : ME_FALSE;
     }
 #   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
     {
         me_page_t page;
-        if (!ME_GetPage(addr, &page))
+        
+        if (!ME_GetPage2(addr, &page, reserved))
             return ret;
 
         ret = !mprotect(page.base, size, prot) ? ME_TRUE : ME_FALSE;

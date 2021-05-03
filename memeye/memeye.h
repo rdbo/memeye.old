@@ -250,14 +250,6 @@ enum
     ME_SHELLCODE_INVAL
 };
 
-enum
-{
-    ME_DEBUG_FAILED = 0,
-    ME_DEBUG_SUCCESS,
-    ME_DEBUG_ATTACHED,
-    ME_DEBUG_NOT_ATTACHED
-};
-
 /* Types */
 typedef void         me_void_t;
 typedef int          me_int_t;
@@ -312,7 +304,6 @@ typedef me_int_t     me_flags_t;
 #endif
 typedef me_int_t     me_arch_t;
 typedef me_int_t     me_shellcode_t;
-typedef me_int_t     me_debug_t;
 
 typedef struct me_module_t
 {
@@ -557,28 +548,24 @@ ME_UnloadModule(me_module_t mod);
 
 ME_API me_bool_t
 ME_EnumPagesEx(me_pid_t   pid,
-               me_bool_t(*callback)(me_pid_t   pid,
-                                    me_page_t  page,
+               me_bool_t(*callback)(me_page_t  page,
                                     me_void_t *arg),
                me_void_t *arg);
 
 ME_API me_bool_t
 ME_EnumPages2Ex(me_pid_t   pid,
-                me_bool_t(*callback)(me_pid_t   pid,
-                                     me_page_t  page,
+                me_bool_t(*callback)(me_page_t  page,
                                      me_void_t *arg),
                 me_void_t *arg,
                 me_void_t *reserved);
 
 ME_API me_bool_t
-ME_EnumPages(me_bool_t(*callback)(me_pid_t   pid,
-                                  me_page_t  page,
+ME_EnumPages(me_bool_t(*callback)(me_page_t  page,
                                   me_void_t *arg),
              me_void_t *arg);
 
 ME_API me_bool_t
-ME_EnumPages2(me_bool_t(*callback)(me_pid_t   pid,
-                                   me_page_t  page,
+ME_EnumPages2(me_bool_t(*callback)(me_page_t  page,
                                    me_void_t *arg),
               me_void_t *arg,
               me_void_t *reserved);
@@ -611,18 +598,18 @@ ME_ReadMemoryEx(me_pid_t     pid,
                 me_byte_t   *dst,
                 me_size_t    size);
 
-ME_API me_bool_t
+ME_API me_size_t
 ME_ReadMemory(me_address_t src,
               me_byte_t   *dst,
               me_size_t    size);
 
-ME_API me_bool_t
+ME_API me_size_t
 ME_WriteMemoryEx(me_pid_t     pid,
                  me_address_t dst,
                  me_byte_t   *src,
                  me_size_t    size);
 
-ME_API me_bool_t
+ME_API me_size_t
 ME_WriteMemory(me_address_t dst,
                me_byte_t   *src,
                me_size_t    size);
@@ -635,10 +622,25 @@ ME_ProtectMemoryEx(me_pid_t     pid,
                    me_prot_t   *old_prot);
 
 ME_API me_bool_t
+ME_ProtectMemory2Ex(me_pid_t     pid,
+                    me_address_t addr,
+                    me_size_t    size,
+                    me_prot_t    prot,
+                    me_prot_t   *old_prot,
+                    me_void_t   *reserved);
+
+ME_API me_bool_t
 ME_ProtectMemory(me_address_t addr,
                  me_size_t    size,
                  me_prot_t    prot,
                  me_prot_t   *old_prot);
+
+ME_API me_bool_t
+ME_ProtectMemory2(me_address_t addr,
+                  me_size_t    size,
+                  me_prot_t    prot,
+                  me_prot_t   *old_prot,
+                  me_void_t   *reserved);
 
 ME_API me_address_t
 ME_AllocateMemoryEx(me_pid_t   pid,
@@ -704,32 +706,32 @@ ME_Syscall(me_pid_t   pid,
 
 /****************************************/
 
-ME_API me_debug_t
+ME_API me_bool_t
 ME_AttachDbg(me_pid_t pid);
 
-ME_API me_debug_t
+ME_API me_void_t
 ME_DetachDbg(me_pid_t pid);
 
-ME_API me_debug_t
+ME_API me_bool_t
 ME_GetStateDbg(me_pid_t pid);
 
-ME_API me_debug_t
+ME_API me_size_t
 ME_ReadMemoryDbg(me_pid_t     pid,
                  me_address_t src,
                  me_byte_t   *dst,
                  me_size_t    size);
 
-ME_API me_debug_t
+ME_API me_size_t
 ME_WriteMemoryDbg(me_pid_t     pid,
                   me_address_t dst,
                   me_byte_t   *src,
                   me_size_t    size);
 
-ME_API me_debug_t
+ME_API me_bool_t
 ME_GetRegsDbg(me_pid_t   pid,
               me_regs_t *pregs);
 
-ME_API me_debug_t
+ME_API me_bool_t
 ME_SetRegsDbg(me_pid_t  pid,
               me_regs_t regs);
 

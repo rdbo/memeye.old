@@ -618,13 +618,13 @@ ME_ReadMemory(me_address_t src,
 
 ME_API me_bool_t
 ME_WriteMemoryEx(me_pid_t     pid,
-                 me_byte_t   *dst,
-                 me_address_t src,
+                 me_address_t dst,
+                 me_byte_t   *src,
                  me_size_t    size);
 
 ME_API me_bool_t
-ME_WriteMemory(me_byte_t   *dst,
-               me_address_t src,
+ME_WriteMemory(me_address_t dst,
+               me_byte_t   *src,
                me_size_t    size);
 
 ME_API me_bool_t
@@ -681,6 +681,26 @@ ME_API me_bool_t
 ME_TrampolineCode(me_address_t src,
                   me_byte_t   *dst,
                   me_size_t    size);
+
+ME_API me_void_t *
+ME_SyscallEx(me_pid_t   pid,
+             me_int_t   nsyscall,
+             me_void_t *arg0,
+             me_void_t *arg1,
+             me_void_t *arg2,
+             me_void_t *arg3,
+             me_void_t *arg4,
+             me_void_t *arg5);
+
+ME_API me_void_t *
+ME_Syscall(me_pid_t   pid,
+           me_int_t   nsyscall,
+           me_void_t *arg0,
+           me_void_t *arg1,
+           me_void_t *arg2,
+           me_void_t *arg3,
+           me_void_t *arg4,
+           me_void_t *arg5);
 
 /****************************************/
 

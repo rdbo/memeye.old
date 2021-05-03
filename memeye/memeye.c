@@ -1699,4 +1699,195 @@ ME_GetPage2(me_address_t addr,
     return ME_GetPage2Ex(ME_GetProcess(), addr, ppage, reserved);
 }
 
+/****************************************/
+
+ME_API me_size_t
+ME_ReadMemoryEx(me_pid_t     pid,
+                me_address_t src,
+                me_byte_t   *dst,
+                me_size_t    size)
+{
+    me_size_t byte_count = 0;
+
+    if (size == 0)
+        return byte_count;
+
+#   if ME_OS == ME_OS_WIN
+    {
+        HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
+
+        if (!hProcess)
+            return byte_count;
+
+        byte_count = (me_size_t)ReadProcessMemory(hProcess, src, dst, size, NULL);
+        CloseHandle(hProcess);
+    }
+#   elif ME_OS == ME_OS_LINUX
+    {
+        struct iovec iosrc = { 0 };
+        struct iovec iodst = { 0 };
+        iodst.iov_base = dst;
+        iodst.iov_len  = size;
+        iosrc.iov_base = src;
+        iosrc.iov_len  = size;
+        byte_count = (me_size_t)process_vm_readv(pid, &iodst, 1, &iosrc, 1, 0);
+
+        if (byte_count == (me_size_t)-1)
+            byte_count = 0;
+    }
+#   elif ME_OS == ME_OS_BSD
+    {
+        int fd = -1;
+
+        {
+            me_tchar_t mem_path[64] = { 0 };
+            ME_SNPRINTF(mem_path, sizeof(mem_path) - sizeof(me_tchar_t),
+                        ME_STR("/proc/%d/mem"), pid);
+            fd = open(mem_path, O_RDONLY);
+        }
+
+        if (fd == -1)
+            return byte_count;
+
+        byte_count = (me_size_t)pread(fd, dst, size, (off_t)src);
+        close(fd);
+
+        if (byte_count == (me_size_t)-1)
+            byte_count = 0;
+    }
+#   endif
+
+    return byte_count;
+}
+
+ME_API me_bool_t
+ME_ReadMemory(me_address_t src,
+              me_byte_t   *dst,
+              me_size_t    size)
+{
+    me_size_t i;
+    for (i = 0; i < size; ++i)
+        dst[i] = ((me_byte_t *)src)[i];
+
+    return i;
+}
+
+ME_API me_bool_t
+ME_WriteMemoryEx(me_pid_t     pid,
+                 me_address_t dst,
+                 me_byte_t   *src,
+                 me_size_t    size)
+{
+    me_byte_t byte_count = 0;
+
+    if (size == 0)
+        return byte_count;
+
+#   if ME_OS == ME_OS_WIN
+    {
+        HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
+
+        if (!hProcess)
+            return byte_count;
+
+        byte_count = (me_size_t)WriteProcessMemory(hProcess, dst, src, size, NULL);
+        CloseHandle(hProcess);
+    }
+#   elif ME_OS == ME_OS_LINUX
+    {
+        struct iovec iosrc = { 0 };
+        struct iovec iodst = { 0 };
+        iosrc.iov_base = src;
+        iosrc.iov_len = size;
+        iodst.iov_base = dst;
+        iodst.iov_len = size;
+        byte_count = (me_size_t)process_vm_writev(pid, &iosrc, 1, &iodst, 1, 0);
+
+        if (byte_count == (me_size_t)-1)
+            byte_count = 0;
+    }
+#   elif ME_OS == ME_OS_BSD
+    {
+        int fd = -1;
+
+        {
+            me_tchar_t mem_path[64] = { 0 };
+            ME_SNPRINTF(mem_path, sizeof(mem_path) - sizeof(me_tchar_t),
+                        ME_STR("/proc/%d/mem"), pid);
+            fd = open(mem_path, O_RDONLY);
+        }
+
+        if (fd == -1)
+            return byte_count;
+
+        byte_count = (me_size_t)pwrite(fd, src, size, (off_t)dst);
+        close(fd);
+
+        if (byte_count == (me_size_t)-1)
+            byte_count = 0;
+    }
+#   endif
+}
+
+ME_API me_bool_t
+ME_WriteMemory(me_address_t dst,
+               me_byte_t   *src,
+               me_size_t    size)
+{
+    me_size_t i;
+    for (i = 0; i < size; ++i)
+        ((me_byte_t *)dst)[i] = src[i];
+
+    return i;
+}
+
+ME_API me_bool_t
+ME_ProtectMemoryEx(me_pid_t     pid,
+                   me_address_t addr,
+                   me_size_t    size,
+                   me_prot_t    prot,
+                   me_prot_t   *old_prot)
+{
+    me_bool_t ret = ME_FALSE;
+#   if ME_OS == ME_OS_WIN
+    {
+
+    }
+#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
+    {
+        
+    }
+#   endif
+}
+
+ME_API me_bool_t
+ME_ProtectMemory(me_address_t addr,
+                 me_size_t    size,
+                 me_prot_t    prot,
+                 me_prot_t   *old_prot)
+{
+    me_bool_t ret = ME_FALSE;
+    me_prot_t old_protection = 0;
+
+#   if ME_OS == ME_OS_WIN
+    {
+        ret = VirtualProtect(addr, size,
+                             prot, old_protection) != 0 ? ME_TRUE : ME_FALSE;
+    }
+#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
+    {
+        me_page_t page;
+        if (!ME_GetPage(addr, &page))
+            return ret;
+
+        ret = !mprotect(page.base, size, prot) ? ME_TRUE : ME_FALSE;
+    }
+#   endif
+
+    if (old_prot)
+        *old_prot = old_protection;
+    
+    return ret;
+}
+
 #endif

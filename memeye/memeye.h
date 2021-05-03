@@ -385,7 +385,8 @@ ME_API void *
 ME_malloc(size_t size);
 
 ME_API void *
-ME_calloc(size_t nmemb, size_t size);
+ME_calloc(size_t nmemb,
+          size_t size);
 
 ME_API void
 ME_free(void *ptr);
@@ -393,7 +394,8 @@ ME_free(void *ptr);
 /****************************************/
 
 ME_API me_bool_t
-ME_EnumProcesses(me_bool_t(*callback)(me_pid_t pid, me_void_t *arg),
+ME_EnumProcesses(me_bool_t(*callback)(me_pid_t   pid,
+                                      me_void_t *arg),
                  me_void_t *arg);
 
 ME_API me_pid_t
@@ -403,22 +405,22 @@ ME_API me_pid_t
 ME_GetProcess(me_void_t);
 
 ME_API me_size_t
-ME_GetProcessPathEx(me_pid_t     pid,
-                    me_tchar_t  *proc_path,
-                    me_size_t    max_len);
+ME_GetProcessPathEx(me_pid_t    pid,
+                    me_tchar_t *proc_path,
+                    me_size_t   max_len);
 
 ME_API me_size_t
-ME_GetProcessPath(me_tchar_t  *proc_path,
-                  me_size_t    max_len);
+ME_GetProcessPath(me_tchar_t *proc_path,
+                  me_size_t   max_len);
 
 ME_API me_size_t
-ME_GetProcessNameEx(me_pid_t     pid,
-                    me_tchar_t  *proc_name,
-                    me_size_t    max_len);
+ME_GetProcessNameEx(me_pid_t    pid,
+                    me_tchar_t *proc_name,
+                    me_size_t   max_len);
 
 ME_API me_size_t
-ME_GetProcessName(me_tchar_t  *proc_name,
-                  me_size_t    max_len);
+ME_GetProcessName(me_tchar_t *proc_name,
+                  me_size_t   max_len);
 
 ME_API me_pid_t
 ME_GetProcessParentEx(me_pid_t pid);
@@ -505,15 +507,15 @@ ME_GetModulePath2(me_module_t mod,
                   me_void_t  *reserved);
 
 ME_API me_size_t
-ME_GetModuleNameEx(me_pid_t     pid,
-                   me_module_t  mod,
-                   me_tchar_t  *mod_name,
-                   me_size_t    max_len);
+ME_GetModuleNameEx(me_pid_t    pid,
+                   me_module_t mod,
+                   me_tchar_t *mod_name,
+                   me_size_t   max_len);
 
 ME_API me_size_t
-ME_GetModuleName(me_module_t  mod,
-                 me_tchar_t  *mod_name,
-                 me_size_t    max_len);
+ME_GetModuleName(me_module_t mod,
+                 me_tchar_t *mod_name,
+                 me_size_t   max_len);
 
 ME_API me_bool_t
 ME_LoadModuleEx(me_pid_t     pid,

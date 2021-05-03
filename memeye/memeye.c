@@ -33,7 +33,8 @@ ME_malloc(size_t size)
 }
 
 ME_API void *
-ME_calloc(size_t nmemb, size_t size)
+ME_calloc(size_t nmemb,
+          size_t size)
 {
     return ME_CALLOC(nmemb, size);
 }
@@ -47,7 +48,8 @@ ME_free(void *ptr)
 /****************************************/
 
 ME_API me_bool_t
-ME_EnumProcesses(me_bool_t(*callback)(me_pid_t pid, me_void_t *arg),
+ME_EnumProcesses(me_bool_t(*callback)(me_pid_t   pid,
+                                      me_void_t *arg),
                  me_void_t *arg)
 {
     me_bool_t ret = ME_FALSE;
@@ -178,9 +180,9 @@ ME_GetProcess(me_void_t)
 }
 
 ME_API me_size_t
-ME_GetProcessPathEx(me_pid_t     pid,
-                    me_tchar_t  *proc_path,
-                    me_size_t    max_len)
+ME_GetProcessPathEx(me_pid_t    pid,
+                    me_tchar_t *proc_path,
+                    me_size_t   max_len)
 {
     me_size_t chr_count = 0;
 
@@ -231,8 +233,8 @@ ME_GetProcessPathEx(me_pid_t     pid,
 }
 
 ME_API me_size_t
-ME_GetProcessPath(me_tchar_t  *proc_path,
-                  me_size_t    max_len)
+ME_GetProcessPath(me_tchar_t *proc_path,
+                  me_size_t   max_len)
 {
     me_size_t chr_count = 0;
 
@@ -257,9 +259,9 @@ ME_GetProcessPath(me_tchar_t  *proc_path,
 }
 
 ME_API me_size_t
-ME_GetProcessNameEx(me_pid_t     pid,
-                    me_tchar_t  *proc_name,
-                    me_size_t    max_len)
+ME_GetProcessNameEx(me_pid_t    pid,
+                    me_tchar_t *proc_name,
+                    me_size_t   max_len)
 {
     me_size_t chr_count = 0;
 
@@ -354,8 +356,8 @@ ME_GetProcessNameEx(me_pid_t     pid,
 }
 
 ME_API me_size_t
-ME_GetProcessName(me_tchar_t  *proc_name,
-                  me_size_t    max_len)
+ME_GetProcessName(me_tchar_t *proc_name,
+                  me_size_t   max_len)
 {
     me_size_t chr_count = 0;
 
@@ -1000,7 +1002,11 @@ ME_GetModulePath2Ex(me_pid_t    pid,
 
                 if (chr_count > max_len)
                     chr_count = max_len - 1;
-                ME_MEMCPY(mod_path, mod_path_str, chr_count * sizeof(me_tchar_t));
+                
+                ME_MEMCPY(mod_path,
+                          mod_path_str,
+                          chr_count * sizeof(me_tchar_t));
+                
                 mod_path[chr_count] = ME_STR('\00');
             }
         }
@@ -1045,7 +1051,9 @@ ME_GetModulePath2(me_module_t mod,
 #   if ME_OS == ME_OS_WIN
     {
         HMODULE hModule = (HMODULE)NULL;
-        GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPTSTR)mod.base, &hModule);
+        GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,
+                          (LPTSTR)mod.base,
+                          &hModule);
         if (!hModule)
             return chr_count;
         GetModuleFileName(hModule, mod_path, max_len);
@@ -1279,7 +1287,9 @@ ME_UnloadModule(me_module_t mod)
 #   if ME_OS == ME_OS_WIN
     {
         HMODULE hModule = (HMODULE)NULL;
-        GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPTSTR)mod.base, &hModule);
+        GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,
+                          (LPTSTR)mod.base,
+                          &hModule);
         if (!hModule)
             return chr_count;
         ret = FreeLibrary(hModule) ? ME_TRUE : ME_FALSE;
@@ -1304,8 +1314,6 @@ ME_UnloadModule(me_module_t mod)
 }
 
 /****************************************/
-
-
 
 
 #endif

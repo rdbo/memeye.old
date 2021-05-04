@@ -136,6 +136,7 @@
 #define ME_PROT_XRW (PROT_EXEC | PROT_READ | PROT_WRITE)
 #define ME_ALLOC_DEFAULT (MAP_PRIVATE | MAP_ANON)
 #endif
+#define ME_FLAG_AUTO 0
 
 /* Others */
 #define ME_NULL  0
@@ -227,27 +228,27 @@
 enum
 {
 #   if ME_ARCH == ME_ARCH_X86
-    ME_SHELLCODE_JMP32 = 0,
+    ME_DETOUR_JMP32 = 0,
     /*
      * JMP *<REL_ADDR>
      */
-    ME_SHELLCODE_JMP64,
+    ME_DETOUR_JMP64,
     /*
      * JMP *[EIP]
      * <ABS_ADDR>
      */
-    ME_SHELLCODE_CALL32,
+    ME_DETOUR_CALL32,
     /*
      * CALL *<REL_ADDR>
      *
      */
-    ME_SHELLCODE_CALL64,
+    ME_DETOUR_CALL64,
     /*
      * CALL *[RIP]
      * <ABS_ADDR>
      */
 #   endif
-    ME_SHELLCODE_INVAL
+    ME_DETOUR_INVAL
 };
 
 /* Types */
@@ -303,7 +304,7 @@ typedef me_int_t     me_prot_t;
 typedef me_int_t     me_flags_t;
 #endif
 typedef me_int_t     me_arch_t;
-typedef me_int_t     me_shellcode_t;
+typedef me_int_t     me_detour_t;
 
 typedef struct me_module_t
 {
@@ -645,13 +646,11 @@ ME_ProtectMemory2(me_address_t addr,
 ME_API me_address_t
 ME_AllocateMemoryEx(me_pid_t   pid,
                     me_size_t  size,
-                    me_prot_t  prot,
-                    me_flags_t flags);
+                    me_prot_t  prot);
 
 ME_API me_address_t
 ME_AllocateMemory(me_size_t  size,
-                  me_prot_t  prot,
-                  me_flags_t flags);
+                  me_prot_t  prot);
 
 ME_API me_bool_t
 ME_FreeMemoryEx(me_pid_t     pid,
@@ -662,27 +661,29 @@ ME_API me_bool_t
 ME_FreeMemory(me_address_t addr,
               me_size_t    size);
 
-ME_API me_bool_t
+ME_API me_size_t
 ME_DetourCodeEx(me_pid_t       pid,
                 me_address_t   src,
                 me_address_t   dst,
-                me_shellcode_t shellcode);
+                me_detour_t    detour);
 
-ME_API me_bool_t
+ME_API me_size_t
 ME_DetourCode(me_address_t   src,
               me_address_t   dst,
-              me_shellcode_t shellcode);
+              me_detour_t    detour);
 
-ME_API me_bool_t
+ME_API me_size_t
 ME_TrampolineCodeEx(me_pid_t     pid,
                     me_address_t src,
-                    me_byte_t   *dst,
-                    me_size_t    size);
+                    me_size_t    size,
+                    me_address_t tramp,
+                    me_size_t    max_size);
 
-ME_API me_bool_t
+ME_API me_size_t
 ME_TrampolineCode(me_address_t src,
-                  me_byte_t   *dst,
-                  me_size_t    size);
+                  me_size_t    size,
+                  me_byte_t   *tramp,
+                  me_size_t    max_size);
 
 ME_API me_void_t *
 ME_SyscallEx(me_pid_t   pid,

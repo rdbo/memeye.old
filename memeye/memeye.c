@@ -1855,6 +1855,12 @@ ME_ProtectMemoryEx(me_pid_t     pid,
 #   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
     {
         me_page_t page;
+        me_int_t  nsyscall = -1;
+#       if ME_OS == ME_OS_LINUX
+        nsyscall = __NR_mprotect;
+#       elif ME_OS == ME_OS_BSD
+        nsyscall = SYS_mprotect;
+#       endif
 
         if (!ME_GetPageEx(pid, addr, &page))
             return ret;
@@ -1863,9 +1869,9 @@ ME_ProtectMemoryEx(me_pid_t     pid,
 
         ret = (
             !ME_SyscallEx(pid,
-                          __NR_mprotect,
+                          nsyscall,
                           (me_void_t *)page.base,
-                          (me_void_t *)size,
+                          (me_void_t *)(me_uintptr_t)size,
                           (me_void_t *)(me_uintptr_t)prot,
                           (me_void_t *)ME_NULL,
                           (me_void_t *)ME_NULL,
@@ -1876,6 +1882,8 @@ ME_ProtectMemoryEx(me_pid_t     pid,
 
     if (old_prot)
         *old_prot = old_protection;
+
+    return ret;
 }
 
 ME_API me_bool_t
@@ -1904,6 +1912,12 @@ ME_ProtectMemory2Ex(me_pid_t     pid,
 #   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
     {
         me_page_t page;
+        me_int_t  nsyscall = -1;
+#       if ME_OS == ME_OS_LINUX
+        nsyscall = __NR_mprotect;
+#       elif ME_OS == ME_OS_BSD
+        nsyscall = SYS_mprotect;
+#       endif
 
         if (!ME_GetPage2Ex(pid, addr, &page, reserved))
             return ret;
@@ -1912,9 +1926,9 @@ ME_ProtectMemory2Ex(me_pid_t     pid,
 
         ret = (
             !ME_SyscallEx(pid,
-                          __NR_mprotect,
+                          nsyscall,
                           (me_void_t *)page.base,
-                          (me_void_t *)size,
+                          (me_void_t *)(me_uintptr_t)size,
                           (me_void_t *)(me_uintptr_t)prot,
                           (me_void_t *)ME_NULL,
                           (me_void_t *)ME_NULL,
@@ -1990,6 +2004,406 @@ ME_ProtectMemory2(me_address_t addr,
         *old_prot = old_protection;
     
     return ret;
+}
+
+ME_API me_address_t
+ME_AllocateMemoryEx(me_pid_t   pid,
+                    me_size_t  size,
+                    me_prot_t  prot)
+{
+    me_address_t alloc = (me_address_t)ME_BAD;
+#   if ME_OS == ME_OS_WIN
+    {
+        HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
+
+        if (!hProcess)
+            return alloc;
+
+        alloc = (me_address_t)VirtualAllocEx(hProcess, NULL, 0,
+                                             ME_ALLOC_DEFAULT, prot);
+
+        if (!alloc)
+            alloc = (me_address_t)ME_BAD;
+
+        CloseHandle(hProcess);
+    }
+#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
+    {
+        me_int_t nsyscall = -1;
+#       if ME_OS == ME_OS_LINUX
+#       if ME_ARCH_SIZE == 64
+        nsyscall = __NR_mmap;
+#       else
+        nsyscall = __NR_mmap2;
+#       endif
+#       elif ME_OS == ME_OS_BSD
+        nsyscall = SYS_mmap;
+#       endif
+
+        alloc = (me_address_t)ME_SyscallEx(pid,
+                                           nsyscall,
+                                           (me_void_t *)0,
+                                           (me_void_t *)(me_uintptr_t)size,
+                                           (me_void_t *)(me_uintptr_t)prot,
+                                           (me_void_t *)(MAP_PRIVATE |
+                                                         MAP_ANON),
+                                           (me_void_t *)-1,
+                                           (me_void_t *)0);
+
+        if (alloc == (me_address_t)MAP_FAILED ||
+            (me_uintptr_t)alloc >= (me_uintptr_t)-4096)
+        {
+            alloc = (me_address_t)ME_BAD;
+        }
+    }
+#   endif
+
+    return alloc;
+}
+
+ME_API me_address_t
+ME_AllocateMemory(me_size_t  size,
+                  me_prot_t  prot)
+{
+    me_address_t alloc = (me_address_t)ME_BAD;
+#   if ME_OS == ME_OS_WIN
+    {
+        alloc = (me_address_t)VirtualAlloc(NULL,
+                                           0,
+                                           MEM_COMMIT | MEM_RESERVE,
+                                           prot);
+        
+        if (!alloc)
+            alloc = (me_address_t)ME_BAD;
+    }
+#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
+    {
+        alloc = (me_address_t)mmap(NULL,
+                                   size,
+                                   prot,
+                                   MAP_PRIVATE | MAP_ANON,
+                                   -1,
+                                   0);
+
+        if (alloc == (me_address_t)MAP_FAILED)
+            alloc = (me_address_t)ME_BAD;
+    }
+#   endif
+
+    return alloc;
+}
+
+ME_API me_bool_t
+ME_FreeMemoryEx(me_pid_t     pid,
+                me_address_t addr,
+                me_size_t    size)
+{
+    me_bool_t ret = ME_FALSE;
+#   if ME_OS == ME_OS_WIN
+    {
+        HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
+
+        if (!hProcess)
+            return ret;
+
+        ret = (
+            VirtualFreeEx(hProcess, addr, 0, MEM_RELEASE)
+        ) ? ME_TRUE : ME_FALSE;
+
+        CloseHandle(hProcess);
+    }
+#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
+    {
+        me_int_t nsyscall = -1;
+#       if ME_OS == ME_OS_LINUX
+        nsyscall = __NR_munmap;
+#       elif ME_OS == ME_OS_BSD
+        nsyscall = SYS_munmap;
+#       endif
+
+        ret = (
+            !ME_SyscallEx(pid,
+                          nsyscall,
+                          (me_void_t *)addr,
+                          (me_void_t *)(me_uintptr_t)size,
+                          (me_void_t *)ME_NULL,
+                          (me_void_t *)ME_NULL,
+                          (me_void_t *)ME_NULL,
+                          (me_void_t *)ME_NULL)
+        ) ? ME_TRUE : ME_FALSE;
+    }
+#   endif
+
+    return ret;
+}
+
+ME_API me_bool_t
+ME_FreeMemory(me_address_t addr,
+              me_size_t    size)
+{
+    me_bool_t ret = ME_FALSE;
+#   if ME_OS == ME_OS_WIN
+    {
+        ret = VirtualFree(addr, 0, MEM_RELEASE) ? ME_TRUE : ME_FALSE;
+    }
+#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
+    {
+        ret = !munmap(addr, size) ? ME_TRUE : ME_FALSE;
+    }
+#   endif
+
+    return ret;
+}
+
+ME_API me_size_t
+ME_DetourCodeEx(me_pid_t       pid,
+                me_address_t   src,
+                me_address_t   dst,
+                me_detour_t    detour)
+{
+    me_size_t byte_count = 0;
+
+#   if ME_ARCH == ME_ARCH_X86
+    switch (detour)
+    {
+    case ME_DETOUR_JMP32:
+        {
+            me_byte_t code[] =
+            {
+                0xE9, 0x0, 0x0, 0x0, 0x0
+            };
+
+            *(me_uint32_t *)(&code[1]) = (me_uint32_t)(
+                (me_uintptr_t)dst - (me_uintptr_t)src - sizeof(code)
+            );
+
+            byte_count = ME_WriteMemoryEx(pid, src, code, sizeof(code));
+        }
+        break;
+    case ME_DETOUR_JMP64:
+        {
+            me_byte_t code[] =
+            {
+                0xFF, 0x25, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0
+#               if ME_ARCH_SIZE == 64
+                , 0x0, 0x0, 0x0, 0x0
+#               endif
+            };
+
+            *(me_uintptr_t *)(&code[6]) = (me_uintptr_t)dst;
+
+            byte_count = ME_WriteMemoryEx(pid, src, code, sizeof(code));
+        }
+        break;
+    case ME_DETOUR_CALL32:
+        {
+            me_byte_t code[] =
+            {
+                0xE8, 0x0, 0x0, 0x0, 0x0
+            };
+
+            *(me_uint32_t *)(&code[1]) = (me_uint32_t)(
+                (me_uintptr_t)dst - (me_uintptr_t)src - sizeof(code)
+            );
+
+            byte_count = ME_WriteMemoryEx(pid, src, code, sizeof(code));
+        }
+        break;
+    case ME_DETOUR_CALL64:
+        {
+            me_byte_t code[] =
+            {
+                0xFF, 0x15, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0
+#               if ME_ARCH_SIZE == 64
+                , 0x0, 0x0, 0x0, 0x0
+#               endif
+            };
+
+            *(me_uintptr_t *)(&code[6]) = (me_uintptr_t)dst;
+
+            byte_count = ME_WriteMemoryEx(pid, src, code, sizeof(code));
+        }
+        break;
+    }
+#   endif
+
+    return byte_count;
+}
+
+ME_API me_size_t
+ME_DetourCode(me_address_t   src,
+              me_address_t   dst,
+              me_detour_t    detour)
+{
+    me_size_t byte_count = 0;
+
+#   if ME_ARCH == ME_ARCH_X86
+    switch (detour)
+    {
+    case ME_DETOUR_JMP32:
+        {
+            me_byte_t code[] =
+            {
+                0xE9, 0x0, 0x0, 0x0, 0x0
+            };
+
+            *(me_uint32_t *)(&code[1]) = (me_uint32_t)(
+                (me_uintptr_t)dst - (me_uintptr_t)src - sizeof(code)
+            );
+
+            byte_count = ME_WriteMemory(src, code, sizeof(code));
+        }
+        break;
+    case ME_DETOUR_JMP64:
+        {
+            me_byte_t code[] =
+            {
+                0xFF, 0x25, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0
+#               if ME_ARCH_SIZE == 64
+                , 0x0, 0x0, 0x0, 0x0
+#               endif
+            };
+
+            *(me_uintptr_t *)(&code[6]) = (me_uintptr_t)dst;
+
+            byte_count = ME_WriteMemory(src, code, sizeof(code));
+        }
+        break;
+    case ME_DETOUR_CALL32:
+        {
+            me_byte_t code[] =
+            {
+                0xE8, 0x0, 0x0, 0x0, 0x0
+            };
+
+            *(me_uint32_t *)(&code[1]) = (me_uint32_t)(
+                (me_uintptr_t)dst - (me_uintptr_t)src - sizeof(code)
+            );
+
+            byte_count = ME_WriteMemory(src, code, sizeof(code));
+        }
+        break;
+    case ME_DETOUR_CALL64:
+        {
+            me_byte_t code[] =
+            {
+                0xFF, 0x15, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0
+#               if ME_ARCH_SIZE == 64
+                , 0x0, 0x0, 0x0, 0x0
+#               endif
+            };
+
+            *(me_uintptr_t *)(&code[6]) = (me_uintptr_t)dst;
+
+            byte_count = ME_WriteMemory(src, code, sizeof(code));
+        }
+        break;
+    }
+#   endif
+
+    return byte_count;
+}
+
+ME_API me_size_t
+ME_TrampolineCodeEx(me_pid_t     pid,
+                    me_address_t src,
+                    me_size_t    size,
+                    me_address_t tramp,
+                    me_size_t    max_size)
+{
+    me_size_t byte_count = 0;
+
+#   if ME_ARCH == ME_ARCH_X86
+    {
+        me_byte_t *old_code;
+
+        me_byte_t code[] =
+        {
+            0xFF, 0x25, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0
+#           if ME_ARCH_SIZE == 64
+            , 0x0, 0x0, 0x0, 0x0
+#           endif
+        };
+
+        if (size + sizeof(code) > max_size)
+            return byte_count;
+
+        old_code = (me_byte_t *)ME_malloc(size);
+
+        if (!old_code)
+            return byte_count;
+
+        if (ME_ReadMemoryEx(pid, src, old_code, size))
+        {
+            *(me_uintptr_t *)(&code[6]) = (me_uintptr_t)(&((me_byte_t *)src)[size]);
+
+            byte_count += ME_WriteMemoryEx(pid, tramp, old_code, size);
+            byte_count += ME_WriteMemoryEx(
+                pid,
+                (me_address_t)(&((me_byte_t *)tramp)[size]),
+                code,
+                sizeof(code)
+            );
+
+            if (byte_count != size + sizeof(code))
+                byte_count = 0;
+        }
+
+        ME_free(old_code);  
+    }
+#   endif
+
+    return byte_count;
+}
+
+ME_API me_size_t
+ME_TrampolineCode(me_address_t src,
+                  me_size_t    size,
+                  me_byte_t   *tramp,
+                  me_size_t    max_size)
+{
+    me_size_t byte_count = 0;
+
+#   if ME_ARCH == ME_ARCH_X86
+    {
+        me_byte_t *old_code;
+
+        me_byte_t code[] =
+        {
+            0xFF, 0x25, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0
+#           if ME_ARCH_SIZE == 64
+            , 0x0, 0x0, 0x0, 0x0
+#           endif
+        };
+
+        if (size + sizeof(code) > max_size)
+            return byte_count;
+
+        old_code = (me_byte_t *)ME_malloc(size);
+
+        if (!old_code)
+            return byte_count;
+
+        if (ME_ReadMemory(src, old_code, size))
+        {
+            *(me_uintptr_t *)(&code[6]) = (me_uintptr_t)(&((me_byte_t *)src)[size]);
+
+            byte_count += ME_WriteMemory(tramp, old_code, size);
+            byte_count += ME_WriteMemory(
+                (me_address_t)(&((me_byte_t *)tramp)[size]),
+                code,
+                sizeof(code)
+            );
+
+            if (byte_count != size + sizeof(code))
+                byte_count = 0;
+        }
+
+        ME_free(old_code);  
+    }
+#   endif
+
+    return byte_count;
 }
 
 #endif

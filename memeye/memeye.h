@@ -474,6 +474,26 @@ ME_GetModule2(me_tstring_t mod_ref,
               me_module_t *pmod,
               me_void_t   *reserved);
 
+ME_API me_bool_t
+ME_FindModuleEx(me_pid_t     pid,
+                me_tstring_t mod_ref,
+                me_module_t *pmod);
+
+ME_API me_bool_t
+ME_FindModule2Ex(me_pid_t     pid,
+                 me_tstring_t mod_ref,
+                 me_module_t *pmod,
+                 me_void_t   *reserved);
+
+ME_API me_bool_t
+ME_FindModule(me_tstring_t mod_ref,
+              me_module_t *pmod);
+
+ME_API me_bool_t
+ME_FindModule2(me_tstring_t mod_ref,
+               me_module_t *pmod,
+               me_void_t   *reserved);
+
 ME_API me_size_t
 ME_GetModulePathEx(me_pid_t    pid,
                    me_module_t mod,
@@ -704,6 +724,15 @@ ME_Syscall(me_pid_t   pid,
            me_void_t *arg3,
            me_void_t *arg4,
            me_void_t *arg5);
+
+ME_API me_address_t
+ME_GetSymbolEx(me_pid_t     pid,
+               me_module_t  mod,
+               me_cstring_t symbol);
+
+ME_API me_address_t
+ME_GetSymbol(me_module_t  mod,
+             me_cstring_t symbol);
 
 /****************************************/
 

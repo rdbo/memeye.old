@@ -24,6 +24,12 @@ typedef struct _ME_GetModuleExArgs_t
     me_tstring_t mod_ref;
 } _ME_GetModuleExArgs_t;
 
+typedef struct _ME_FindModuleExArgs_t
+{
+    me_module_t *pmod;
+    me_tstring_t mod_ref;
+} _ME_FindModuleExArgs_t;
+
 typedef struct _ME_GetPageExArgs_t
 {
     me_page_t *ppage;
@@ -840,6 +846,157 @@ ME_GetModule2(me_tstring_t mod_ref,
               me_void_t   *reserved)
 {
     return ME_GetModule2Ex(ME_GetProcess(), mod_ref, pmod, reserved);
+}
+
+static me_bool_t
+_ME_FindModuleExCallback(me_pid_t    pid,
+                         me_module_t mod,
+                         me_void_t  *arg,
+                         me_void_t  *reserved)
+{
+    _ME_FindModuleExArgs_t *parg = (_ME_FindModuleExArgs_t *)arg;
+    me_tchar_t mod_path[ME_PATH_MAX] = { 0 };
+    if (ME_GetModulePath2Ex(pid, mod, mod_path,
+                            ME_ARRLEN(mod_path), reserved))
+    {
+        if (ME_STRSTR(mod_path, parg->mod_ref))
+        {
+            *(parg->pmod) = mod;
+            return ME_FALSE;
+        }
+    }
+
+    return ME_TRUE;
+}
+
+ME_API me_bool_t
+ME_FindModuleEx(me_pid_t     pid,
+                me_tstring_t mod_ref,
+                me_module_t *pmod)
+{
+    me_bool_t ret = ME_FALSE;
+
+    if (pid == (me_pid_t)ME_BAD || !mod_ref || !pmod)
+        return ret;
+
+#   if ME_OS == ME_OS_WIN
+    {
+        ret = ME_FindModule2Ex(pid, mod_ref, pmod, (me_void_t *)ME_NULL);
+    }
+#   elif ME_OS == ME_OS_LINUX
+    {
+        me_tchar_t *maps_file = (me_tchar_t *)ME_NULL;
+        {
+            int fd;
+            me_tchar_t maps_path[64] = { 0 };
+            me_tchar_t read_buf[1024] = { 0 };
+            me_size_t  read_len = ME_ARRLEN(read_buf);
+            me_size_t  read_count = 0;
+            me_tchar_t *old_maps_file;
+
+            ME_SNPRINTF(maps_path, ME_ARRLEN(maps_path) - 1,
+                        ME_STR("/proc/%d/maps"), pid);
+            fd = open(maps_path, O_RDONLY);
+            if (fd == -1)
+                return ret;
+
+            while((read(fd, read_buf, sizeof(read_buf))) > 0)
+            {
+                old_maps_file = maps_file;
+                maps_file = (me_tchar_t *)ME_calloc(
+                    read_len * (++read_count),
+                    sizeof(maps_file[0])
+                );
+
+                if (old_maps_file != (me_tchar_t *)ME_NULL)
+                {
+                    if (maps_file)
+                    {
+                        ME_MEMCPY(
+                            maps_file, old_maps_file,
+                            (read_count - 1) *
+                                read_len *
+                                sizeof(maps_file[0])
+                        );
+                    }
+
+                    ME_free(old_maps_file);
+                }
+
+                if (!maps_file)
+                    return ret;
+
+                ME_MEMCPY(&maps_file[(read_count - 1) * read_len], 
+                          read_buf, sizeof(read_buf));
+            }
+
+            old_maps_file = maps_file;
+            maps_file = ME_calloc(
+                    (read_len * read_count) + 1,
+                    sizeof(maps_file[0])
+            );
+
+            if (maps_file)
+            {
+                ME_MEMCPY(maps_file, old_maps_file,
+                          read_len * read_count);
+                maps_file[(read_len * read_count)] = ME_STR('\00');
+            }
+
+            ME_free(old_maps_file);
+
+            if (!maps_file)
+                return ret;
+        }
+
+        ret = ME_FindModule2Ex(pid, mod_ref, pmod, (me_void_t *)maps_file);
+
+        ME_free(maps_file);
+    }
+#   elif ME_OS == ME_OS_BSD
+    {
+
+    }
+#   endif
+    return ret;
+}
+
+ME_API me_bool_t
+ME_FindModule2Ex(me_pid_t     pid,
+                 me_tstring_t mod_ref,
+                 me_module_t *pmod,
+                 me_void_t   *reserved)
+{
+    me_bool_t ret = ME_FALSE;
+    _ME_FindModuleExArgs_t arg;
+
+    arg.pmod = pmod;
+    arg.mod_ref = mod_ref;
+
+    if (pid == (me_pid_t)ME_BAD || !arg.mod_ref || !arg.pmod)
+        return ret;
+
+    ret = ME_EnumModules2Ex(pid,
+                            _ME_FindModuleExCallback,
+                            (me_void_t *)&arg,
+                            reserved);
+    
+    return ret;
+}
+
+ME_API me_bool_t
+ME_FindModule(me_tstring_t mod_ref,
+              me_module_t *pmod)
+{
+    return ME_FindModuleEx(ME_GetProcess(), mod_ref, pmod);
+}
+
+ME_API me_bool_t
+ME_FindModule2(me_tstring_t mod_ref,
+               me_module_t *pmod,
+               me_void_t   *reserved)
+{
+    return ME_FindModule2Ex(ME_GetProcess(), mod_ref, pmod, reserved);
 }
 
 ME_API me_size_t

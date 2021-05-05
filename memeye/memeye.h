@@ -298,10 +298,18 @@ typedef me_tstring_t me_string_t;
 typedef DWORD        me_pid_t;
 typedef DWORD        me_prot_t;
 typedef DWORD        me_flags_t;
-#elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
+typedef CONTEXT      me_regs_t;
+#elif ME_OS == ME_OS_LINUX
 typedef pid_t        me_pid_t;
 typedef me_int_t     me_prot_t;
 typedef me_int_t     me_flags_t;
+typedef struct user_regs_struct
+                     me_regs_t;
+#elif ME_OS == ME_OS_BSD
+typedef pid_t        me_pid_t;
+typedef me_int_t     me_prot_t;
+typedef me_int_t     me_flags_t;
+typedef struct reg   me_regs_t;
 #endif
 typedef me_int_t     me_arch_t;
 typedef me_int_t     me_detour_t;
@@ -322,57 +330,7 @@ typedef struct me_page_t
     me_flags_t   flags;
 } me_page_t;
 
-typedef struct me_regs_t
-{
-#   if ME_ARCH == ME_ARCH_X86
-#   if ME_ARCH_SIZE == 32
-    me_uint32_t eax;
-    me_uint32_t ebx;
-    me_uint32_t ecx;
-    me_uint32_t edx;
-    me_uint32_t edi;
-    me_uint32_t esi;
-    me_uint32_t ebp;
-    me_uint32_t esp;
-    me_uint32_t eip;
-    me_uint32_t cs;
-    me_uint32_t ds;
-    me_uint32_t es;
-    me_uint32_t fs;
-    me_uint32_t gs;
-    me_uint32_t ss;
-#   elif ME_ARCH_SIZE == 64
-    me_uint64_t rax;
-    me_uint64_t rbx;
-    me_uint64_t rcx;
-    me_uint64_t rdx;
-    me_uint64_t rdi;
-    me_uint64_t rsi;
-    me_uint64_t rbp;
-    me_uint64_t rsp;
-    me_uint64_t rip;
-    me_uint64_t r8;
-    me_uint64_t r9;
-    me_uint64_t r10;
-    me_uint64_t r11;
-    me_uint64_t r12;
-    me_uint64_t r13;
-    me_uint64_t r14;
-    me_uint64_t r15;
-    me_uint64_t cs;
-    me_uint64_t ds;
-    me_uint64_t es;
-    me_uint64_t fs;
-    me_uint64_t gs;
-    me_uint64_t ss;
-#   endif
-#   else
-    me_byte_t inval;
-#   endif
-} me_regs_t;
-
 /* MemEye */
-
 ME_API void *
 ME_malloc(size_t size);
 
@@ -739,10 +697,10 @@ ME_GetSymbol(me_module_t  mod,
 ME_API me_bool_t
 ME_AttachDbg(me_pid_t pid);
 
-ME_API me_void_t
+ME_API me_bool_t
 ME_DetachDbg(me_pid_t pid);
 
-ME_API me_bool_t
+ME_API me_int_t
 ME_GetStateDbg(me_pid_t pid);
 
 ME_API me_size_t

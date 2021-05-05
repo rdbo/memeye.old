@@ -438,6 +438,8 @@ ME_GetProcessParentEx(me_pid_t pid)
             me_tchar_t read_buf[1024] = { 0 };
             me_size_t  read_len = ME_ARRLEN(read_buf);
             me_size_t  read_count = 0;
+            me_tchar_t *old_status_file;
+
             ME_SNPRINTF(status_path, ME_ARRLEN(status_path) - 1,
                         ME_STR("/proc/%d/status"), pid);
             fd = open(status_path, O_RDONLY);
@@ -446,9 +448,9 @@ ME_GetProcessParentEx(me_pid_t pid)
 
             while((read(fd, read_buf, sizeof(read_buf))) > 0)
             {
-                me_tchar_t *old_status_file = status_file;
+                old_status_file = status_file;
                 status_file = (me_tchar_t *)ME_calloc(
-                    (read_len * ++read_count) + 1,
+                    read_len * (++read_count),
                     sizeof(status_file[0])
                 );
 
@@ -470,10 +472,27 @@ ME_GetProcessParentEx(me_pid_t pid)
                 if (!status_file)
                     return ppid;
 
-                ME_MEMCPY(&status_file[(read_count - 1) * read_len], read_buf, sizeof(read_buf));
-
-                status_file[read_len] = ME_STR('\00');
+                ME_MEMCPY(&status_file[(read_count - 1) * read_len], 
+                          read_buf, sizeof(read_buf));
             }
+
+            old_status_file = status_file;
+            status_file = ME_calloc(
+                    (read_len * read_count) + 1,
+                    sizeof(status_file[0])
+            );
+
+            if (status_file)
+            {
+                ME_MEMCPY(status_file, old_status_file,
+                          read_len * read_count);
+                status_file[(read_len * read_count)] = ME_STR('\00');
+            }
+
+            ME_free(old_status_file);
+
+            if (!status_file)
+                return ppid;
         }
 
         {
@@ -2562,5 +2581,275 @@ ME_TrampolineCode(me_address_t src,
 
     return byte_count;
 }
+
+/****************************************/
+
+ME_API me_bool_t
+ME_AttachDbg(me_pid_t pid)
+{
+    me_bool_t ret = ME_FALSE;
+#   if ME_OS == ME_OS_WIN
+    {
+        ret = DebugActiveProcess(pid) ? ME_TRUE : ME_FALSE;
+    }
+#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
+    {
+        ret = (
+            ptrace(PTRACE_ATTACH, pid, NULL, NULL)
+         ) != -1 ? ME_TRUE : ME_FALSE;
+    }
+#   endif
+
+    return ret;
+}
+
+ME_API me_bool_t
+ME_DetachDbg(me_pid_t pid)
+{
+    me_bool_t ret = ME_FALSE;
+#   if ME_OS == ME_OS_WIN
+    {
+        ret = DebugActiveProcessStop(pid) ? ME_TRUE : ME_FALSE;
+    }
+#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
+    {
+        ret = (
+            ptrace(PTRACE_DETACH, pid, NULL, NULL)
+         ) != -1 ? ME_TRUE : ME_FALSE;
+    }
+#   endif
+
+    return ret;
+}
+
+ME_API me_int_t
+ME_GetStateDbg(me_pid_t pid)
+{
+    me_int_t ret = (me_int_t)ME_BAD;
+#   if ME_OS == ME_OS_WIN
+    {
+        BOOL Check = FALSE;
+        HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
+
+        if (!hProcess)
+            return ret;
+
+        CheckRemoteDebuggerPresent(hProcess, &Check);
+
+        ret = Check == TRUE ? ME_TRUE : ME_FALSE;
+    }
+#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
+    {
+        me_tchar_t *status_file = (me_tchar_t *)ME_NULL;
+        {
+            int fd;
+            me_tchar_t status_path[64] = { 0 };
+            me_tchar_t read_buf[1024] = { 0 };
+            me_size_t  read_len = ME_ARRLEN(read_buf);
+            me_size_t  read_count = 0;
+            me_tchar_t *old_status_file;
+
+            ME_SNPRINTF(status_path, ME_ARRLEN(status_path) - 1,
+                        ME_STR("/proc/%d/status"), pid);
+            fd = open(status_path, O_RDONLY);
+            if (fd == -1)
+                return ret;
+
+            while((read(fd, read_buf, sizeof(read_buf))) > 0)
+            {
+                old_status_file = status_file;
+                status_file = (me_tchar_t *)ME_calloc(
+                    read_len * (++read_count),
+                    sizeof(status_file[0])
+                );
+
+                if (old_status_file != (me_tchar_t *)ME_NULL)
+                {
+                    if (status_file)
+                    {
+                        ME_MEMCPY(
+                            status_file, old_status_file,
+                            (read_count - 1) *
+                                read_len *
+                                sizeof(status_file[0])
+                        );
+                    }
+
+                    ME_free(old_status_file);
+                }
+
+                if (!status_file)
+                    return ret;
+
+                ME_MEMCPY(&status_file[(read_count - 1) * read_len], 
+                          read_buf, sizeof(read_buf));
+            }
+
+            old_status_file = status_file;
+            status_file = ME_calloc(
+                    (read_len * read_count) + 1,
+                    sizeof(status_file[0])
+            );
+
+            if (status_file)
+            {
+                ME_MEMCPY(status_file, old_status_file,
+                          read_len * read_count);
+                status_file[(read_len * read_count)] = ME_STR('\00');
+            }
+
+            ME_free(old_status_file);
+
+            if (!status_file)
+                return ret;
+        }
+
+        {
+            me_tchar_t *tracer_str;
+            me_tchar_t match[] = ME_STR("TracerPid:\t");
+            if ((tracer_str = ME_STRSTR(status_file,  ME_STR(match))))
+            {
+                ret = ME_STRTOL(&tracer_str[ME_ARRLEN(match) - 1],
+                                NULL,
+                                10) ? ME_TRUE : ME_FALSE;
+            }
+
+            else
+            {
+                ret = ME_FALSE;
+            }
+        }
+
+        ME_free(status_file);
+    }
+#   endif
+
+    return ret;
+}
+
+ME_API me_size_t
+ME_ReadMemoryDbg(me_pid_t     pid,
+                 me_address_t src,
+                 me_byte_t   *dst,
+                 me_size_t    size)
+{
+    me_size_t byte_count = 0;
+#   if ME_OS == ME_OS_WIN
+    {
+        byte_count = ME_ReadMemoryEx(pid, src, dst, size);
+    }
+#   elif ME_OS == ME_OS_LINUX
+    {
+        me_size_t i;
+        for (i = 0; i < size; ++i)
+        {
+            long data = ptrace(PTRACE_PEEKDATA,
+                               pid,
+                               (&((me_byte_t *)src)[i]),
+                               NULL);
+            me_byte_t *byte_data = (me_byte_t *)&data;
+            
+            if ((data = ptrace(PTRACE_PEEKDATA, pid, src, NULL)) == -1)
+                return byte_count;
+
+            dst[i] = byte_data[sizeof(long) - 1];
+        }
+
+        byte_count = i;
+    }
+#   elif ME_OS == ME_OS_BSD
+    {
+
+    }
+#   endif
+
+    return byte_count;
+}
+
+ME_API me_size_t
+ME_WriteMemoryDbg(me_pid_t     pid,
+                  me_address_t dst,
+                  me_byte_t   *src,
+                  me_size_t    size)
+{
+    me_size_t byte_count = 0;
+#   if ME_OS == ME_OS_WIN
+    {
+        byte_count = ME_WriteMemory(pid, dst, src, size);
+    }
+#   elif ME_OS == ME_OS_LINUX
+    {
+        long data = 0;
+        me_size_t i;
+
+        for (i = 0; i < size; i += sizeof(data), data = 0)
+        {
+            data = *(long *)&src[i];
+            ptrace(PTRACE_POKEDATA, pid, (&((me_byte_t *)dst)[i]), data);
+        }
+    }
+#   endif
+}
+
+ME_API me_bool_t
+ME_GetRegsDbg(me_pid_t   pid,
+              me_regs_t *pregs)
+{
+    me_bool_t ret = ME_FALSE;
+
+    if (!pregs)
+        return ret;
+
+#   if ME_OS == ME_OS_WIN
+    {
+        HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+        DWORD threadID = 0;
+        if (hSnap != INVALID_HANDLE_VALUE)
+        {
+            THREADENTRY32 entry;
+            entry.dwSize = sizeof(THREADENTRY32);
+            if (Thread32First(hSnap, &entry))
+            {
+                do
+                {
+                    me_pid_t cur_pid = (me_pid_t)entry.th32OwnerProcessID;
+                    if (cur_pid == pid)
+                    {
+                        threadID = entry.th32ThreadID;
+                        break;
+                    }
+                } while(Thread32Next(hSnap, &entry));
+            }
+
+            CloseHandle(hSnap);
+        }
+
+        if (threadID)
+        {
+            CONTEXT ctx;
+            HANDLE hThread = OpenThread(THREAD_ALL_ACCESS, FALSE, threadID);
+
+            if (!hThread)
+                return ret;
+
+            if (GetThreadContext(hThread, &ctx))
+            {
+                *pregs = ctx;
+                ret = ME_TRUE;
+            }
+        }
+    }
+#   elif ME_OS == ME_OS_LINUX
+    {
+
+    }
+#   endif
+
+    return ret;
+}
+
+ME_API me_bool_t
+ME_SetRegsDbg(me_pid_t  pid,
+              me_regs_t regs);
 
 #endif

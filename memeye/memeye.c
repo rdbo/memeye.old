@@ -198,7 +198,7 @@ ME_GetProcessPathEx(me_pid_t    pid,
 {
     me_size_t chr_count = 0;
 
-    if (!proc_path || max_len == 0)
+    if (pid == (me_pid_t)ME_BAD || !proc_path || max_len == 0)
         return chr_count;
 
 #   if ME_OS == ME_OS_WIN
@@ -277,7 +277,7 @@ ME_GetProcessNameEx(me_pid_t    pid,
 {
     me_size_t chr_count = 0;
 
-    if (!proc_name || max_len == 0)
+    if (pid == (me_pid_t)ME_BAD || !proc_name || max_len == 0)
         return chr_count;
 
 #   if ME_OS == ME_OS_WIN /* || ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD */
@@ -407,6 +407,10 @@ ME_API me_pid_t
 ME_GetProcessParentEx(me_pid_t pid)
 {
     me_pid_t ppid = (me_pid_t)ME_BAD;
+
+    if (pid == (me_pid_t)ME_BAD)
+        return ppid;
+
 #   if ME_OS == ME_OS_WIN
     {
         HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
@@ -545,7 +549,7 @@ ME_EnumModulesEx(me_pid_t   pid,
 {
     me_bool_t ret = ME_FALSE;
 
-    if (!callback || pid == (me_pid_t)ME_BAD)
+    if (pid == (me_pid_t)ME_BAD || !callback)
         return ret;
 
 #   if ME_OS == ME_OS_WIN
@@ -642,7 +646,7 @@ ME_EnumModules2Ex(me_pid_t   pid,
 {
     me_bool_t ret = ME_FALSE;
 
-    if (!callback || pid == (me_pid_t)ME_BAD)
+    if (pid == (me_pid_t)ME_BAD || !callback)
         return ret;
 
 #   if ME_OS == ME_OS_WIN
@@ -820,7 +824,7 @@ ME_GetModuleEx(me_pid_t     pid,
     arg.pmod = pmod;
     arg.mod_ref = mod_ref;
 
-    if (arg.mod_ref && arg.pmod && pid != (me_pid_t)ME_BAD)
+    if (pid != (me_pid_t)ME_BAD && arg.mod_ref && arg.pmod)
     {
         ret = ME_EnumModulesEx(pid, 
                                _ME_GetModuleExCallback,
@@ -841,7 +845,7 @@ ME_GetModule2Ex(me_pid_t     pid,
     arg.pmod = pmod;
     arg.mod_ref = mod_ref;
 
-    if (arg.mod_ref && arg.pmod && pid != (me_pid_t)ME_BAD)
+    if (pid != (me_pid_t)ME_BAD && arg.mod_ref && arg.pmod)
     {
         ret = ME_EnumModules2Ex(pid, 
                                 _ME_GetModuleExCallback,
@@ -1026,7 +1030,7 @@ ME_GetModulePathEx(me_pid_t    pid,
 {
     me_size_t chr_count = 0;
 
-    if (!mod_path || max_len == 0 || pid == (me_pid_t)ME_BAD)
+    if (pid == (me_pid_t)ME_BAD || !mod_path || max_len == 0)
         return chr_count;
 
 #   if ME_OS == ME_OS_WIN
@@ -1123,7 +1127,7 @@ ME_GetModulePath2Ex(me_pid_t    pid,
 {
     me_size_t chr_count = 0;
 
-    if (!mod_path || max_len == 0 || pid == (me_pid_t)ME_BAD)
+    if (pid == (me_pid_t)ME_BAD || !mod_path || max_len == 0)
         return chr_count;
 
 #   if ME_OS == ME_OS_WIN
@@ -1216,6 +1220,10 @@ ME_GetModulePath(me_module_t mod,
                  me_size_t   max_len)
 {
     me_size_t chr_count = 0;
+
+    if (!mod_path || max_len == 0)
+        return chr_count;
+
 #   if ME_OS == ME_OS_WIN
     {
         chr_count = ME_GetModulePath2(mod, mod_path, 
@@ -1271,7 +1279,7 @@ ME_GetModuleNameEx(me_pid_t    pid,
 {
     me_size_t chr_count = 0;
 
-    if (!mod_name || max_len == 0)
+    if (pid == (me_pid_t)ME_BAD || !mod_name || max_len == 0)
         return chr_count;
 
 #   if ME_OS == ME_OS_WIN
@@ -1320,7 +1328,7 @@ ME_GetModuleName2Ex(me_pid_t    pid,
 {
     me_size_t chr_count = 0;
 
-    if (!mod_name || max_len == 0)
+    if (pid == (me_pid_t)ME_BAD || !mod_name || max_len == 0)
         return chr_count;
 
 #   if ME_OS == ME_OS_WIN
@@ -1395,6 +1403,9 @@ ME_GetModuleName(me_module_t mod,
     me_size_t chr_count = 0;
     me_tchar_t mod_path[ME_PATH_MAX] = { 0 };
 
+    if (!mod_name || max_len == 0)
+        return chr_count;
+
     if (ME_GetModulePath(mod, mod_path, ME_ARRLEN(mod_path)))
     {
         me_tchar_t path_chr;
@@ -1431,6 +1442,9 @@ ME_GetModuleName2(me_module_t mod,
     me_size_t chr_count = 0;
     me_tchar_t mod_path[ME_PATH_MAX] = { 0 };
 
+    if (!mod_name || max_len == 0)
+        return chr_count;
+
     if (ME_GetModulePath2(mod, mod_path, ME_ARRLEN(mod_path), reserved))
     {
         me_tchar_t path_chr;
@@ -1463,6 +1477,10 @@ ME_LoadModuleEx(me_pid_t     pid,
                 me_tstring_t path)
 {
     me_bool_t ret = ME_FALSE;
+
+    if (pid == (me_pid_t)ME_BAD || !path)
+        return ret;
+
 #   if ME_OS == ME_OS_WIN
     {
         ret = ME_LoadModule2Ex(pid, path, (me_void_t *)ME_NULL);
@@ -1484,7 +1502,7 @@ ME_LoadModule2Ex(me_pid_t     pid,
 {
     me_bool_t ret = ME_FALSE;
 
-    if (!path)
+    if (pid == (me_pid_t)ME_BAD || !path)
         return ret;
 
 #   if ME_OS == ME_OS_WIN
@@ -1550,6 +1568,10 @@ ME_UnloadModuleEx(me_pid_t    pid,
                   me_module_t mod)
 {
     me_bool_t ret = ME_FALSE;
+
+    if (pid == (me_pid_t)ME_BAD)
+        return ret;
+
 #   if ME_OS == ME_OS_WIN
     {
 
@@ -1606,7 +1628,7 @@ ME_EnumPagesEx(me_pid_t   pid,
 {
     me_bool_t ret = ME_FALSE;
 
-    if (!callback)
+    if (pid == (me_pid_t)ME_BAD || !callback)
         return ret;
 
 #   if ME_OS == ME_OS_WIN
@@ -1701,7 +1723,7 @@ ME_EnumPages2Ex(me_pid_t   pid,
 {
     me_bool_t ret = ME_FALSE;
 
-    if (!callback || pid == (me_pid_t)ME_BAD)
+    if (pid == (me_pid_t)ME_BAD || !callback)
         return ret;
 
 #   if ME_OS == ME_OS_WIN
@@ -1827,7 +1849,7 @@ ME_GetPageEx(me_pid_t     pid,
     arg.addr = addr;
     arg.ppage = ppage;
 
-    if (!arg.ppage)
+    if (pid == (me_pid_t)ME_BAD || !arg.ppage)
         return ret;
 
     ret = ME_EnumPagesEx(pid, _ME_GetPageExCallback, (me_void_t *)&arg);
@@ -1846,7 +1868,7 @@ ME_GetPage2Ex(me_pid_t     pid,
     arg.addr = addr;
     arg.ppage = ppage;
 
-    if (!arg.ppage)
+    if (pid == (me_pid_t)ME_BAD || !arg.ppage)
         return ret;
 
     ret = ME_EnumPages2Ex(pid, _ME_GetPageExCallback,
@@ -1880,7 +1902,7 @@ ME_ReadMemoryEx(me_pid_t     pid,
 {
     me_size_t byte_count = 0;
 
-    if (size == 0)
+    if (pid == (me_pid_t)ME_BAD || !dst || size == 0)
         return byte_count;
 
 #   if ME_OS == ME_OS_WIN
@@ -1951,7 +1973,7 @@ ME_WriteMemoryEx(me_pid_t     pid,
 {
     me_size_t byte_count = 0;
 
-    if (size == 0)
+    if (pid == (me_pid_t)ME_BAD || !src || size == 0)
         return byte_count;
 
 #   if ME_OS == ME_OS_WIN
@@ -2023,6 +2045,9 @@ ME_ProtectMemoryEx(me_pid_t     pid,
 {
     me_bool_t ret = ME_FALSE;
     me_prot_t old_protection = 0;
+
+    if (pid == (me_pid_t)ME_BAD || size == 0)
+        return ret;
     
 #   if ME_OS == ME_OS_WIN
     {
@@ -2072,6 +2097,9 @@ ME_ProtectMemory2Ex(me_pid_t     pid,
 {
     me_bool_t ret = ME_FALSE;
     me_prot_t old_protection = 0;
+
+    if (pid == (me_pid_t)ME_BAD || size == 0)
+        return ret;
 
 #   if ME_OS == ME_OS_WIN
     {
@@ -2128,6 +2156,9 @@ ME_ProtectMemory(me_address_t addr,
     me_bool_t ret = ME_FALSE;
     me_prot_t old_protection = 0;
 
+    if (size == 0)
+        return ret;
+
 #   if ME_OS == ME_OS_WIN
     {
         ret = ME_ProtectMemory2(addr, size, prot,
@@ -2160,6 +2191,9 @@ ME_ProtectMemory2(me_address_t addr,
     me_bool_t ret = ME_FALSE;
     me_prot_t old_protection = 0;
 
+    if (size == 0)
+        return ret;
+
 #   if ME_OS == ME_OS_WIN
     {
         ret = VirtualProtect(addr, size,
@@ -2188,6 +2222,10 @@ ME_AllocateMemoryEx(me_pid_t   pid,
                     me_prot_t  prot)
 {
     me_address_t alloc = (me_address_t)ME_BAD;
+
+    if (pid == (me_pid_t)ME_BAD)
+        return alloc;
+
 #   if ME_OS == ME_OS_WIN
     {
         HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
@@ -2275,6 +2313,10 @@ ME_FreeMemoryEx(me_pid_t     pid,
                 me_size_t    size)
 {
     me_bool_t ret = ME_FALSE;
+
+    if (pid == (me_pid_t)ME_BAD)
+        return ret;
+
 #   if ME_OS == ME_OS_WIN
     {
         HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
@@ -2338,6 +2380,9 @@ ME_DetourCodeEx(me_pid_t       pid,
                 me_detour_t    detour)
 {
     me_size_t byte_count = 0;
+
+    if (pid == (me_pid_t)ME_BAD)
+        return byte_count;
 
 #   if ME_ARCH == ME_ARCH_X86
     switch (detour)
@@ -2489,6 +2534,9 @@ ME_TrampolineCodeEx(me_pid_t     pid,
 {
     me_size_t byte_count = 0;
 
+    if (pid == (me_pid_t)ME_BAD || size == 0)
+        return byte_count;
+
 #   if ME_ARCH == ME_ARCH_X86
     {
         me_byte_t *old_code;
@@ -2540,6 +2588,9 @@ ME_TrampolineCode(me_address_t src,
 {
     me_size_t byte_count = 0;
 
+    if (size == 0)
+        return byte_count;
+
 #   if ME_ARCH == ME_ARCH_X86
     {
         me_byte_t *old_code;
@@ -2588,6 +2639,10 @@ ME_API me_bool_t
 ME_AttachDbg(me_pid_t pid)
 {
     me_bool_t ret = ME_FALSE;
+
+    if (pid == (me_pid_t)ME_BAD)
+        return ret;
+
 #   if ME_OS == ME_OS_WIN
     {
         ret = DebugActiveProcess(pid) ? ME_TRUE : ME_FALSE;
@@ -2607,6 +2662,10 @@ ME_API me_bool_t
 ME_DetachDbg(me_pid_t pid)
 {
     me_bool_t ret = ME_FALSE;
+
+    if (pid == (me_pid_t)ME_BAD)
+        return ret;
+
 #   if ME_OS == ME_OS_WIN
     {
         ret = DebugActiveProcessStop(pid) ? ME_TRUE : ME_FALSE;
@@ -2626,6 +2685,10 @@ ME_API me_int_t
 ME_GetStateDbg(me_pid_t pid)
 {
     me_int_t ret = (me_int_t)ME_BAD;
+
+    if (pid == (me_pid_t)ME_BAD)
+        return ret;
+
 #   if ME_OS == ME_OS_WIN
     {
         BOOL Check = FALSE;
@@ -2734,6 +2797,10 @@ ME_ReadMemoryDbg(me_pid_t     pid,
                  me_size_t    size)
 {
     me_size_t byte_count = 0;
+
+    if (pid == (me_pid_t)ME_BAD || !dst || size == 0)
+        return byte_count;
+
 #   if ME_OS == ME_OS_WIN
     {
         byte_count = ME_ReadMemoryEx(pid, src, dst, size);
@@ -2773,6 +2840,10 @@ ME_WriteMemoryDbg(me_pid_t     pid,
                   me_size_t    size)
 {
     me_size_t byte_count = 0;
+
+    if (pid == (me_pid_t)ME_BAD || !src || size == 0)
+        return byte_count;
+
 #   if ME_OS == ME_OS_WIN
     {
         byte_count = ME_WriteMemory(pid, dst, src, size);
@@ -2799,7 +2870,7 @@ ME_GetRegsDbg(me_pid_t   pid,
 {
     me_bool_t ret = ME_FALSE;
 
-    if (!pregs)
+    if (pid == (me_pid_t)ME_BAD || !pregs)
         return ret;
 
 #   if ME_OS == ME_OS_WIN
@@ -2863,7 +2934,7 @@ ME_ChangeRegDbg(me_regid_t   reg,
 {
     me_bool_t ret = ME_FALSE;
 
-    if (!pregs || reg == ME_REGID_INVAL)
+    if (!pregs)
         return ret;
 
 #   if ME_OS == ME_OS_WIN
@@ -3166,6 +3237,9 @@ ME_SetRegsDbg(me_pid_t  pid,
               me_regs_t regs)
 {
     me_bool_t ret = ME_FALSE;
+
+    if (pid == (me_pid_t)ME_BAD)
+        return ret;
 
 #   if ME_OS == ME_OS_WIN
     {

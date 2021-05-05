@@ -228,7 +228,7 @@
 enum
 {
 #   if ME_ARCH == ME_ARCH_X86
-    ME_DETOUR_JMP32 = 0,
+    ME_DETOUR_JMP32,
     /*
      * JMP *<REL_ADDR>
      */
@@ -249,6 +249,42 @@ enum
      */
 #   endif
     ME_DETOUR_INVAL
+};
+
+enum
+{
+#   if ME_ARCH == ME_ARCH_X86
+#   if ME_ARCH_SIZE == 64
+    ME_REGID_RAX,
+    ME_REGID_RBX,
+    ME_REGID_RCX,
+    ME_REGID_RDX,
+    ME_REGID_RSI,
+    ME_REGID_RDI,
+    ME_REGID_RBP,
+    ME_REGID_RSP,
+    ME_REGID_RIP,
+    ME_REGID_R8,
+    ME_REGID_R9,
+    ME_REGID_R10,
+    ME_REGID_R11,
+    ME_REGID_R12,
+    ME_REGID_R13,
+    ME_REGID_R14,
+    ME_REGID_R15,
+#   else
+    ME_REGID_EAX,
+    ME_REGID_EBX,
+    ME_REGID_ECX,
+    ME_REGID_EDX,
+    ME_REGID_ESI,
+    ME_REGID_EDI,
+    ME_REGID_EBP,
+    ME_REGID_ESP,
+    ME_REGID_EIP,
+#   endif
+#   endif
+    ME_REGID_INVAL
 };
 
 /* Types */
@@ -313,6 +349,7 @@ typedef struct reg   me_regs_t;
 #endif
 typedef me_int_t     me_arch_t;
 typedef me_int_t     me_detour_t;
+typedef me_int_t     me_regid_t;
 
 typedef struct me_module_t
 {
@@ -718,6 +755,11 @@ ME_WriteMemoryDbg(me_pid_t     pid,
 ME_API me_bool_t
 ME_GetRegsDbg(me_pid_t   pid,
               me_regs_t *pregs);
+
+ME_API me_bool_t
+ME_ChangeRegDbg(me_regid_t   reg,
+                me_uintptr_t val,
+                me_regs_t   *pregs);
 
 ME_API me_bool_t
 ME_SetRegsDbg(me_pid_t  pid,

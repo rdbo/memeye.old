@@ -3712,6 +3712,7 @@ ME_BreakDbg(me_pid_t pid)
         if (!hProcess)
             return ret;
         ret = DebugBreakProcess(hProcess) ? ME_TRUE : ME_FALSE;
+        CloseHandle(hProcess);
     }
 #   elif ME_OS == ME_OS_LINUX
     {

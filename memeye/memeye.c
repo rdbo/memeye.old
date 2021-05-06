@@ -3698,4 +3698,57 @@ ME_WriteRegDbg(me_uintptr_t val,
     return ret;
 }
 
+ME_API me_bool_t
+ME_BreakDbg(me_pid_t pid)
+{
+    me_bool_t ret = ME_FALSE;
+
+    if (pid == (me_pid_t)ME_BAD)
+        return ret;
+
+#   if ME_OS == ME_OS_WIN
+    {
+        HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
+        if (!hProcess)
+            return ret;
+        ret = DebugBreakProcess(hProcess) ? ME_TRUE : ME_FALSE;
+    }
+#   elif ME_OS == ME_OS_LINUX
+    {
+        if (ptrace(PTRACE_INTERRUPT, pid, NULL, NULL) != -1)
+            ret = ME_TRUE;
+    }
+#   elif ME_OS == ME_OS_BSD
+    {
+        if (ptrace(PT_SUSPEND, pid, NULL, NULL) != -1)
+            ret = ME_TRUE;
+    }
+#   endif
+}
+
+ME_API me_bool_t
+ME_KillDbg(me_pid_t pid)
+{
+    me_bool_t ret = ME_FALSE;
+
+    if (pid == (me_pid_t)ME_BAD)
+        return ret;
+
+#   if ME_OS == ME_OS_WIN
+    {
+
+    }
+#   elif ME_OS == ME_OS_LINUX
+    {
+        if (ptrace(PTRACE_KILL, pid, NULL, NULL) != -1)
+            ret = ME_TRUE;
+    }
+#   elif ME_OS == ME_OS_BSD
+    {
+        if (ptrace(PT_KILL, pid, NULL, NULL) != -1)
+            ret = ME_TRUE;
+    }
+#   endif
+}
+
 #endif

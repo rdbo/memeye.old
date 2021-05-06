@@ -777,5 +777,11 @@ ME_WaitDbg(me_pid_t pid);
 ME_API me_bool_t
 ME_StepDbg(me_pid_t pid);
 
+ME_API me_bool_t
+ME_BreakDbg(me_pid_t pid);
+
+ME_API me_bool_t
+ME_KillDbg(me_pid_t pid);
+
 #endif
 #endif

@@ -2645,8 +2645,9 @@ ME_SyscallEx(me_pid_t   pid,
 {
     me_void_t *ret = (me_void_t *)ME_BAD;
     me_regs_t regs, old_regs;
-    me_bool_t debugged = ME_GetStateDbg(pid);
+    me_bool_t debugged;
     me_address_t code_ex;
+    me_address_t inj_addr;
 #   if ME_ARCH == ME_ARCH_X86
 #   if ME_ARCH_SIZE == 64
     me_tchar_t code[] = 
@@ -2660,20 +2661,29 @@ ME_SyscallEx(me_pid_t   pid,
     };
 #   endif
 #   endif
+    me_byte_t old_code[sizeof(code)];
 
-    code_ex = ME_AllocateMemoryEx(pid, sizeof(code), ME_PROT_XRW);
-
-    if (code_ex == (me_address_t)ME_BAD)
-        return ret;
-
-    if (!ME_WriteMemoryEx(pid, code_ex, code, sizeof(code)))
-        return ret;
+    debugged = ME_GetStateDbg(pid);
 
     if (!debugged)
         ME_AttachDbg(pid);
-    
+
     ME_GetRegsDbg(pid, &old_regs);
     regs = old_regs;
+#   if ME_ARCH == ME_ARCH_X86
+#   if ME_ARCH_SIZE == 64
+    inj_addr = ME_ReadRegDbg(ME_REGID_RIP, regs);
+#   else
+    inj_addr = ME_ReadRegDbg(ME_REGID_EIP, regs);
+#   endif
+#   endif
+
+    if (!ME_ReadMemoryDbg(pid, inj_addr, old_code, sizeof(old_code)) ||
+        !ME_WriteMemoryDbg(pid, inj_addr, code, sizeof(code)))
+    {
+        return ret;
+    }
+    
 #   if ME_ARCH == ME_ARCH_X86
 #   if ME_ARCH_SIZE == 64
     ME_WriteRegDbg(nsyscall, ME_REGID_RAX, &regs);
@@ -2683,7 +2693,6 @@ ME_SyscallEx(me_pid_t   pid,
     ME_WriteRegDbg(arg3, ME_REGID_R10, &regs);
     ME_WriteRegDbg(arg4, ME_REGID_R8, &regs);
     ME_WriteRegDbg(arg5, ME_REGID_R9, &regs);
-    ME_WriteRegDbg(code_ex, ME_REGID_RIP, &regs);
 #   else
     ME_WriteRegDbg(nsyscall, ME_REGID_EAX, &regs);
     ME_WriteRegDbg(arg0, ME_REGID_EBX, &regs);
@@ -2692,7 +2701,6 @@ ME_SyscallEx(me_pid_t   pid,
     ME_WriteRegDbg(arg3, ME_REGID_ESI, &regs);
     ME_WriteRegDbg(arg4, ME_REGID_EDI, &regs);
     ME_WriteRegDbg(arg5, ME_REGID_EBP, &regs);
-    ME_WriteRegDbg(code_ex, ME_REGID_EIP, &regs);
 #   endif
 #   endif
 
@@ -2708,6 +2716,7 @@ ME_SyscallEx(me_pid_t   pid,
 #   endif
 #   endif
 
+    ME_WriteMemoryDbg(pid, inj_addr, old_code, sizeof(old_code));
     ME_SetRegsDbg(pid, old_regs);
     ME_DetachDbg(pid);
 

@@ -2633,6 +2633,113 @@ ME_TrampolineCode(me_address_t src,
     return byte_count;
 }
 
+ME_API me_void_t *
+ME_SyscallEx(me_pid_t   pid,
+             me_int_t   nsyscall,
+             me_void_t *arg0,
+             me_void_t *arg1,
+             me_void_t *arg2,
+             me_void_t *arg3,
+             me_void_t *arg4,
+             me_void_t *arg5)
+{
+    me_void_t *ret = (me_void_t *)ME_BAD;
+    me_regs_t regs, old_regs;
+    me_bool_t debugged = ME_GetStateDbg(pid);
+    me_address_t code_ex;
+#   if ME_ARCH == ME_ARCH_X86
+#   if ME_ARCH_SIZE == 64
+    me_tchar_t code[] = 
+    {
+        0xCD, 0x80
+    };
+#   else
+    me_tchar_t code[] = 
+    {
+        0x0F, 0x05
+    };
+#   endif
+#   endif
+
+    code_ex = ME_AllocateMemoryEx(pid, sizeof(code), ME_PROT_XRW);
+
+    if (code_ex == (me_address_t)ME_BAD)
+        return ret;
+
+    if (!ME_WriteMemoryEx(pid, code_ex, code, sizeof(code)))
+        return ret;
+
+    if (!debugged)
+        ME_AttachDbg(pid);
+    
+    ME_GetRegsDbg(pid, &old_regs);
+    regs = old_regs;
+#   if ME_ARCH == ME_ARCH_X86
+#   if ME_ARCH_SIZE == 64
+    ME_WriteRegDbg(nsyscall, ME_REGID_RAX, &regs);
+    ME_WriteRegDbg(arg0, ME_REGID_RDI, &regs);
+    ME_WriteRegDbg(arg1, ME_REGID_RSI, &regs);
+    ME_WriteRegDbg(arg2, ME_REGID_RDX, &regs);
+    ME_WriteRegDbg(arg3, ME_REGID_R10, &regs);
+    ME_WriteRegDbg(arg4, ME_REGID_R8, &regs);
+    ME_WriteRegDbg(arg5, ME_REGID_R9, &regs);
+    ME_WriteRegDbg(code_ex, ME_REGID_RIP, &regs);
+#   else
+    ME_WriteRegDbg(nsyscall, ME_REGID_EAX, &regs);
+    ME_WriteRegDbg(arg0, ME_REGID_EBX, &regs);
+    ME_WriteRegDbg(arg1, ME_REGID_ECX, &regs);
+    ME_WriteRegDbg(arg2, ME_REGID_EDX, &regs);
+    ME_WriteRegDbg(arg3, ME_REGID_ESI, &regs);
+    ME_WriteRegDbg(arg4, ME_REGID_EDI, &regs);
+    ME_WriteRegDbg(arg5, ME_REGID_EBP, &regs);
+    ME_WriteRegDbg(code_ex, ME_REGID_EIP, &regs);
+#   endif
+#   endif
+
+    ME_SetRegsDbg(pid, regs);
+    ME_StepDbg(pid);
+    ME_WaitDbg(pid);
+    ME_GetRegsDbg(pid, &regs);
+#   if ME_ARCH == ME_ARCH_X86
+#   if ME_ARCH_SIZE == 64
+    ret = (me_void_t *)ME_ReadRegDbg(ME_REGID_RAX, regs);
+#   else
+    ret = (me_void_t *)ME_ReadRegDbg(ME_REGID_EAX, regs);
+#   endif
+#   endif
+
+    ME_SetRegsDbg(pid, old_regs);
+    ME_DetachDbg(pid);
+
+    if (!debugged)
+        ME_DetachDbg(pid);
+
+    return ret;
+}
+
+ME_API me_void_t *
+ME_Syscall(me_int_t   nsyscall,
+           me_void_t *arg0,
+           me_void_t *arg1,
+           me_void_t *arg2,
+           me_void_t *arg3,
+           me_void_t *arg4,
+           me_void_t *arg5)
+{
+    me_void_t *ret = (me_void_t *)ME_FALSE;
+#   if ME_OS == ME_OS_WIN
+    {
+
+    }
+#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
+    {
+        ret = (me_void_t *)syscall(nsyscall, arg0, arg1, arg2, arg3, arg4, arg5);
+    }
+#   endif
+
+    return ret;
+}
+
 /****************************************/
 
 ME_API me_bool_t
@@ -2928,9 +3035,359 @@ ME_GetRegsDbg(me_pid_t   pid,
 }
 
 ME_API me_bool_t
-ME_ChangeRegDbg(me_regid_t   reg,
-                me_uintptr_t val,
-                me_regs_t   *pregs)
+ME_SetRegsDbg(me_pid_t  pid,
+              me_regs_t regs)
+{
+    me_bool_t ret = ME_FALSE;
+
+    if (pid == (me_pid_t)ME_BAD)
+        return ret;
+
+#   if ME_OS == ME_OS_WIN
+    {
+        HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+        DWORD threadID = 0;
+        if (hSnap != INVALID_HANDLE_VALUE)
+        {
+            THREADENTRY32 entry;
+            entry.dwSize = sizeof(THREADENTRY32);
+            if (Thread32First(hSnap, &entry))
+            {
+                do
+                {
+                    me_pid_t cur_pid = (me_pid_t)entry.th32OwnerProcessID;
+                    if (cur_pid == pid)
+                    {
+                        threadID = entry.th32ThreadID;
+                        break;
+                    }
+                } while(Thread32Next(hSnap, &entry));
+            }
+
+            CloseHandle(hSnap);
+        }
+
+        if (threadID)
+        {
+            HANDLE hThread = OpenThread(THREAD_ALL_ACCESS, FALSE, threadID);
+
+            if (!hThread)
+                return ret;
+
+            if (SetThreadContext(hThread, &regs))
+                ret = ME_TRUE;
+        }
+    }
+#   elif ME_OS == ME_OS_LINUX
+    {
+        ret = (ptrace(PTRACE_SETREGS, pid,
+                      NULL, &regs) != -1) ? ME_TRUE : ME_FALSE;
+    }
+#   elif ME_OS == ME_OS_BSD
+    {
+        ret = (ptrace(PT_SETREGS, pid,
+                      (caddr_t)pregs, 0) != -1) ? ME_TRUE : ME_FALSE;
+    }
+#   endif
+
+    return ret;
+}
+
+ME_API me_uintptr_t
+ME_ReadRegDbg(me_regid_t   reg,
+              me_regs_t    regs)
+{
+    me_uintptr_t val = (me_uintptr_t)ME_BAD;
+#   if ME_OS == ME_OS_WIN
+    {
+#       if ME_ARCH == ME_ARCH_X86
+#       if ME_ARCH_SIZE == 64
+        switch (reg)
+        {
+        case ME_REGID_RAX:
+            val = regs.Rax;
+            break;
+        case ME_REGID_RBX:
+            val = regs.Rbx;
+            break;
+        case ME_REGID_RCX:
+            val = regs.Rcx;
+            break;
+        case ME_REGID_RDX:
+            val = regs.Rdx;
+            break;
+        case ME_REGID_RSI:
+            val = regs.Rsi;
+            break;
+        case ME_REGID_RDI:
+            val = regs.Rdi;
+            break;
+        case ME_REGID_RBP:
+            val = regs.Rbp;
+            break;
+        case ME_REGID_RSP:
+            val = regs.Rsp;
+            break;
+        case ME_REGID_RIP:
+            val = regs.Rip;
+            break;
+        case ME_REGID_R8:
+            val = regs.R8;
+            break;
+        case ME_REGID_R9:
+            val = regs.R9;
+            break;
+        case ME_REGID_R10:
+            val = regs.R10;
+            break;
+        case ME_REGID_R11:
+            val = regs.R11;
+            break;
+        case ME_REGID_R12:
+            val = regs.R12;
+            break;
+        case ME_REGID_R13:
+            val = regs.R13;
+            break;
+        case ME_REGID_R14:
+            val = regs.R14;
+            break;
+        case ME_REGID_R15:
+            val = regs.R15;
+            break;
+        default:
+            return ret;
+        }
+
+#       else
+        switch (reg)
+        {
+        case ME_REGID_EAX:
+            val = regs.Eax;
+            break;
+        case ME_REGID_EBX:
+            val = regs.Ebx;
+            break;
+        case ME_REGID_ECX:
+            val = regs.Ecx;
+            break;
+        case ME_REGID_EDX:
+            val = regs.Edx;
+            break;
+        case ME_REGID_ESI:
+            val = regs.Esi;
+            break;
+        case ME_REGID_EDI:
+            val = regs.Edi;
+            break;
+        case ME_REGID_EBP:
+            val = regs.Ebp;
+            break;
+        case ME_REGID_ESP:
+            val = regs.Esp;
+            break;
+        case ME_REGID_EIP:
+            val = regs.Eip;
+            break;
+        default:
+            return ret;
+        }
+#       endif
+#       endif
+    }
+#   elif ME_OS == ME_OS_LINUX
+    {
+#       if ME_ARCH == ME_ARCH_X86
+#       if ME_ARCH_SIZE == 64
+        switch (reg)
+        {
+        case ME_REGID_RAX:
+            val = regs.rax;
+            break;
+        case ME_REGID_RBX:
+            val = regs.rbx;
+            break;
+        case ME_REGID_RCX:
+            val = regs.rcx;
+            break;
+        case ME_REGID_RDX:
+            val = regs.rdx;
+            break;
+        case ME_REGID_RSI:
+            val = regs.rsi;
+            break;
+        case ME_REGID_RDI:
+            val = regs.rdi;
+            break;
+        case ME_REGID_RBP:
+            val = regs.rbp;
+            break;
+        case ME_REGID_RSP:
+            val = regs.rsp;
+            break;
+        case ME_REGID_RIP:
+            val = regs.rip;
+            break;
+        case ME_REGID_R8:
+            val = regs.r8;
+            break;
+        case ME_REGID_R9:
+            val = regs.r9;
+            break;
+        case ME_REGID_R10:
+            val = regs.r10;
+            break;
+        case ME_REGID_R11:
+            val = regs.r11;
+            break;
+        case ME_REGID_R12:
+            val = regs.r12;
+            break;
+        case ME_REGID_R13:
+            val = regs.r13;
+            break;
+        case ME_REGID_R14:
+            val = regs.r14;
+            break;
+        case ME_REGID_R15:
+            val = regs.r15;
+            break;
+        }
+#       else
+        switch (reg)
+        {
+        case ME_REGID_EAX:
+            val = regs.eax;
+            break;
+        case ME_REGID_EBX:
+            val = regs.ebx;
+            break;
+        case ME_REGID_ECX:
+            val = regs.ecx;
+            break;
+        case ME_REGID_EDX:
+            val = regs.edx;
+            break;
+        case ME_REGID_ESI:
+            val = regs.esi;
+            break;
+        case ME_REGID_EDI:
+            val = regs.edi;
+            break;
+        case ME_REGID_EBP:
+            val = regs.ebp;
+            break;
+        case ME_REGID_ESP:
+            val = regs.esp;
+            break;
+        case ME_REGID_EIP:
+            val = regs.eip;
+            break;
+        }
+#       endif
+#       endif
+    }
+#   elif ME_OS == ME_OS_BSD
+    {
+#       if ME_ARCH == ME_ARCH_X86
+#       if ME_ARCH_SIZE == 64
+        switch (reg)
+        {
+        case ME_REGID_RAX:
+            pregs->r_rax = val;
+            break;
+        case ME_REGID_RBX:
+            pregs->r_rbx = val;
+            break;
+        case ME_REGID_RCX:
+            pregs->r_rcx = val;
+            break;
+        case ME_REGID_RDX:
+            pregs->r_rdx = val;
+            break;
+        case ME_REGID_RSI:
+            pregs->r_rsi = val;
+            break;
+        case ME_REGID_RDI:
+            pregs->r_rdi = val;
+            break;
+        case ME_REGID_RBP:
+            pregs->r_rbp = val;
+            break;
+        case ME_REGID_RSP:
+            pregs->r_rsp = val;
+            break;
+        case ME_REGID_RIP:
+            pregs->r_rip = val;
+            break;
+        case ME_REGID_R8:
+            pregs->r_r8 = val;
+            break;
+        case ME_REGID_R9:
+            pregs->r_r9 = val;
+            break;
+        case ME_REGID_R10:
+            pregs->r_r10 = val;
+            break;
+        case ME_REGID_R11:
+            pregs->r_r11 = val;
+            break;
+        case ME_REGID_R12:
+            pregs->r_r12 = val;
+            break;
+        case ME_REGID_R13:
+            pregs->r_r13 = val;
+            break;
+        case ME_REGID_R14:
+            pregs->r_r14 = val;
+            break;
+        case ME_REGID_R15:
+            pregs->r_r15 = val;
+            break;
+        }
+#       else
+        switch (reg)
+        {
+        case ME_REGID_EAX:
+            pregs->r_eax = val;
+            break;
+        case ME_REGID_EBX:
+            pregs->r_ebx = val;
+            break;
+        case ME_REGID_ECX:
+            pregs->r_ecx = val;
+            break;
+        case ME_REGID_EDX:
+            pregs->r_edx = val;
+            break;
+        case ME_REGID_ESI:
+            pregs->r_esi = val;
+            break;
+        case ME_REGID_EDI:
+            pregs->r_edi = val;
+            break;
+        case ME_REGID_EBP:
+            pregs->r_ebp = val;
+            break;
+        case ME_REGID_ESP:
+            pregs->r_esp = val;
+            break;
+        case ME_REGID_EIP:
+            pregs->r_eip = val;
+            break;
+        }
+#       endif
+#       endif
+    }
+#   endif
+
+    return val;
+}
+
+ME_API me_bool_t
+ME_WriteRegDbg(me_uintptr_t val,
+               me_regid_t   reg,
+               me_regs_t   *pregs)
 {
     me_bool_t ret = ME_FALSE;
 
@@ -3226,65 +3683,6 @@ ME_ChangeRegDbg(me_regid_t   reg,
         ret = ME_TRUE;
 
 #       endif
-    }
-#   endif
-
-    return ret;
-}
-
-ME_API me_bool_t
-ME_SetRegsDbg(me_pid_t  pid,
-              me_regs_t regs)
-{
-    me_bool_t ret = ME_FALSE;
-
-    if (pid == (me_pid_t)ME_BAD)
-        return ret;
-
-#   if ME_OS == ME_OS_WIN
-    {
-        HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
-        DWORD threadID = 0;
-        if (hSnap != INVALID_HANDLE_VALUE)
-        {
-            THREADENTRY32 entry;
-            entry.dwSize = sizeof(THREADENTRY32);
-            if (Thread32First(hSnap, &entry))
-            {
-                do
-                {
-                    me_pid_t cur_pid = (me_pid_t)entry.th32OwnerProcessID;
-                    if (cur_pid == pid)
-                    {
-                        threadID = entry.th32ThreadID;
-                        break;
-                    }
-                } while(Thread32Next(hSnap, &entry));
-            }
-
-            CloseHandle(hSnap);
-        }
-
-        if (threadID)
-        {
-            HANDLE hThread = OpenThread(THREAD_ALL_ACCESS, FALSE, threadID);
-
-            if (!hThread)
-                return ret;
-
-            if (SetThreadContext(hThread, &regs))
-                ret = ME_TRUE;
-        }
-    }
-#   elif ME_OS == ME_OS_LINUX
-    {
-        ret = (ptrace(PTRACE_SETREGS, pid,
-                      NULL, &regs) != -1) ? ME_TRUE : ME_FALSE;
-    }
-#   elif ME_OS == ME_OS_BSD
-    {
-        ret = (ptrace(PT_SETREGS, pid,
-                      (caddr_t)pregs, 0) != -1) ? ME_TRUE : ME_FALSE;
     }
 #   endif
 

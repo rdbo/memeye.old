@@ -711,8 +711,7 @@ ME_SyscallEx(me_pid_t   pid,
              me_void_t *arg5);
 
 ME_API me_void_t *
-ME_Syscall(me_pid_t   pid,
-           me_int_t   nsyscall,
+ME_Syscall(me_int_t   nsyscall,
            me_void_t *arg0,
            me_void_t *arg1,
            me_void_t *arg2,
@@ -757,13 +756,26 @@ ME_GetRegsDbg(me_pid_t   pid,
               me_regs_t *pregs);
 
 ME_API me_bool_t
-ME_ChangeRegDbg(me_regid_t   reg,
-                me_uintptr_t val,
-                me_regs_t   *pregs);
-
-ME_API me_bool_t
 ME_SetRegsDbg(me_pid_t  pid,
               me_regs_t regs);
+
+ME_API me_uintptr_t
+ME_ReadRegDbg(me_regid_t   reg,
+              me_regs_t    regs);
+
+ME_API me_bool_t
+ME_WriteRegDbg(me_uintptr_t val,
+               me_regid_t   reg,
+               me_regs_t   *pregs);
+
+ME_API me_bool_t
+ME_ContinueDbg(me_pid_t pid);
+
+ME_API me_bool_t
+ME_WaitDbg(me_pid_t pid);
+
+ME_API me_bool_t
+ME_StepDbg(me_pid_t pid);
 
 #endif
 #endif

@@ -554,7 +554,7 @@ ME_EnumModulesEx(me_pid_t   pid,
 
 #   if ME_OS == ME_OS_WIN
     {
-        ret = ME_EnumModules2Ex(pid, callback, arg, (me_void_t *)ME_NULL);
+        ret = ME_EnumModules2Ex(pid, callback, arg, ME_NULLPTR);
     }
 #   elif ME_OS == ME_OS_LINUX
     {
@@ -904,7 +904,7 @@ ME_FindModuleEx(me_pid_t     pid,
 
 #   if ME_OS == ME_OS_WIN
     {
-        ret = ME_FindModule2Ex(pid, mod_ref, pmod, (me_void_t *)ME_NULL);
+        ret = ME_FindModule2Ex(pid, mod_ref, pmod, ME_NULLPTR);
     }
 #   elif ME_OS == ME_OS_LINUX
     {
@@ -1036,7 +1036,7 @@ ME_GetModulePathEx(me_pid_t    pid,
 #   if ME_OS == ME_OS_WIN
     {
         chr_count = ME_GetModulePath2Ex(pid, mod, mod_path,
-                                        max_len, (me_void_t *)ME_NULL);
+                                        max_len, ME_NULLPTR);
     }
 #   elif ME_OS == ME_OS_LINUX
     {
@@ -1227,7 +1227,7 @@ ME_GetModulePath(me_module_t mod,
 #   if ME_OS == ME_OS_WIN
     {
         chr_count = ME_GetModulePath2(mod, mod_path, 
-                                      max_len, (me_void_t *)ME_NULL);
+                                      max_len, ME_NULLPTR);
     }
 #   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
     {
@@ -1285,7 +1285,7 @@ ME_GetModuleNameEx(me_pid_t    pid,
 #   if ME_OS == ME_OS_WIN
     {
         chr_count = ME_GetModuleName2Ex(pid, mod, mod_name,
-                                        max_len, (me_void_t *)ME_NULL);
+                                        max_len, ME_NULLPTR);
     }
 #   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
     {
@@ -1483,7 +1483,7 @@ ME_LoadModuleEx(me_pid_t     pid,
 
 #   if ME_OS == ME_OS_WIN
     {
-        ret = ME_LoadModule2Ex(pid, path, (me_void_t *)ME_NULL);
+        ret = ME_LoadModule2Ex(pid, path, ME_NULLPTR);
     }
 #   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
     {
@@ -1528,7 +1528,7 @@ ME_LoadModule(me_tstring_t path)
 
 #   if ME_OS == ME_OS_WIN
     {
-        ret = ME_LoadModule2(path, (me_void_t *)ME_NULL);
+        ret = ME_LoadModule2(path, ME_NULLPTR);
     }
 #   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
     {
@@ -1633,7 +1633,7 @@ ME_EnumPagesEx(me_pid_t   pid,
 
 #   if ME_OS == ME_OS_WIN
     {
-        ret = ME_EnumPages2Ex(pid, callback, arg, (me_void_t *)ME_NULL);
+        ret = ME_EnumPages2Ex(pid, callback, arg, ME_NULLPTR);
     }
 #   elif ME_OS == ME_OS_LINUX
     {
@@ -2051,7 +2051,7 @@ ME_ProtectMemoryEx(me_pid_t     pid,
     
 #   if ME_OS == ME_OS_WIN
     {
-        ret = ME_ProtectMemory2Ex(pid, addr, size, prot, (me_void_t *)ME_NULL);
+        ret = ME_ProtectMemory2Ex(pid, addr, size, prot, ME_NULLPTR);
     }
 #   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
     {
@@ -2074,9 +2074,9 @@ ME_ProtectMemoryEx(me_pid_t     pid,
                           (me_void_t *)page.base,
                           (me_void_t *)(me_uintptr_t)size,
                           (me_void_t *)(me_uintptr_t)prot,
-                          (me_void_t *)ME_NULL,
-                          (me_void_t *)ME_NULL,
-                          (me_void_t *)ME_NULL)
+                          ME_NULLPTR,
+                          ME_NULLPTR,
+                          ME_NULLPTR)
         ) ? ME_TRUE : ME_FALSE;
     }
 #   endif
@@ -2134,9 +2134,9 @@ ME_ProtectMemory2Ex(me_pid_t     pid,
                           (me_void_t *)page.base,
                           (me_void_t *)(me_uintptr_t)size,
                           (me_void_t *)(me_uintptr_t)prot,
-                          (me_void_t *)ME_NULL,
-                          (me_void_t *)ME_NULL,
-                          (me_void_t *)ME_NULL)
+                          ME_NULLPTR,
+                          ME_NULLPTR,
+                          ME_NULLPTR)
         ) ? ME_TRUE : ME_FALSE;
     }
 #   endif
@@ -2162,7 +2162,7 @@ ME_ProtectMemory(me_address_t addr,
 #   if ME_OS == ME_OS_WIN
     {
         ret = ME_ProtectMemory2(addr, size, prot,
-                                old_prot, (me_void_t *)ME_NULL);
+                                old_prot, ME_NULLPTR);
     }
 #   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
     {
@@ -2344,10 +2344,10 @@ ME_FreeMemoryEx(me_pid_t     pid,
                           nsyscall,
                           (me_void_t *)addr,
                           (me_void_t *)(me_uintptr_t)size,
-                          (me_void_t *)ME_NULL,
-                          (me_void_t *)ME_NULL,
-                          (me_void_t *)ME_NULL,
-                          (me_void_t *)ME_NULL)
+                          ME_NULLPTR,
+                          ME_NULLPTR,
+                          ME_NULLPTR,
+                          ME_NULLPTR)
         ) ? ME_TRUE : ME_FALSE;
     }
 #   endif
@@ -2646,16 +2646,15 @@ ME_SyscallEx(me_pid_t   pid,
     me_void_t *ret = (me_void_t *)ME_BAD;
     me_regs_t regs, old_regs;
     me_bool_t debugged;
-    me_address_t code_ex;
     me_address_t inj_addr;
 #   if ME_ARCH == ME_ARCH_X86
 #   if ME_ARCH_SIZE == 64
-    me_tchar_t code[] = 
+    me_byte_t code[] = 
     {
         0xCD, 0x80
     };
 #   else
-    me_tchar_t code[] = 
+    me_byte_t code[] = 
     {
         0x0F, 0x05
     };
@@ -2672,35 +2671,35 @@ ME_SyscallEx(me_pid_t   pid,
     regs = old_regs;
 #   if ME_ARCH == ME_ARCH_X86
 #   if ME_ARCH_SIZE == 64
-    inj_addr = ME_ReadRegDbg(ME_REGID_RIP, regs);
+    inj_addr = (me_address_t)ME_ReadRegDbg(ME_REGID_RIP, regs);
 #   else
-    inj_addr = ME_ReadRegDbg(ME_REGID_EIP, regs);
+    inj_addr = (me_address_t)ME_ReadRegDbg(ME_REGID_EIP, regs);
 #   endif
 #   endif
 
     if (!ME_ReadMemoryDbg(pid, inj_addr, old_code, sizeof(old_code)) ||
         !ME_WriteMemoryDbg(pid, inj_addr, code, sizeof(code)))
     {
-        return ret;
+        goto L_DETACH_AND_EXIT;
     }
     
 #   if ME_ARCH == ME_ARCH_X86
 #   if ME_ARCH_SIZE == 64
-    ME_WriteRegDbg(nsyscall, ME_REGID_RAX, &regs);
-    ME_WriteRegDbg(arg0, ME_REGID_RDI, &regs);
-    ME_WriteRegDbg(arg1, ME_REGID_RSI, &regs);
-    ME_WriteRegDbg(arg2, ME_REGID_RDX, &regs);
-    ME_WriteRegDbg(arg3, ME_REGID_R10, &regs);
-    ME_WriteRegDbg(arg4, ME_REGID_R8, &regs);
-    ME_WriteRegDbg(arg5, ME_REGID_R9, &regs);
+    ME_WriteRegDbg((me_uintptr_t)nsyscall, ME_REGID_RAX, &regs);
+    ME_WriteRegDbg((me_uintptr_t)arg0, ME_REGID_RDI, &regs);
+    ME_WriteRegDbg((me_uintptr_t)arg1, ME_REGID_RSI, &regs);
+    ME_WriteRegDbg((me_uintptr_t)arg2, ME_REGID_RDX, &regs);
+    ME_WriteRegDbg((me_uintptr_t)arg3, ME_REGID_R10, &regs);
+    ME_WriteRegDbg((me_uintptr_t)arg4, ME_REGID_R8, &regs);
+    ME_WriteRegDbg((me_uintptr_t)arg5, ME_REGID_R9, &regs);
 #   else
-    ME_WriteRegDbg(nsyscall, ME_REGID_EAX, &regs);
-    ME_WriteRegDbg(arg0, ME_REGID_EBX, &regs);
-    ME_WriteRegDbg(arg1, ME_REGID_ECX, &regs);
-    ME_WriteRegDbg(arg2, ME_REGID_EDX, &regs);
-    ME_WriteRegDbg(arg3, ME_REGID_ESI, &regs);
-    ME_WriteRegDbg(arg4, ME_REGID_EDI, &regs);
-    ME_WriteRegDbg(arg5, ME_REGID_EBP, &regs);
+    ME_WriteRegDbg((me_uintptr_t)nsyscall, ME_REGID_EAX, &regs);
+    ME_WriteRegDbg((me_uintptr_t)arg0, ME_REGID_EBX, &regs);
+    ME_WriteRegDbg((me_uintptr_t)arg1, ME_REGID_ECX, &regs);
+    ME_WriteRegDbg((me_uintptr_t)arg2, ME_REGID_EDX, &regs);
+    ME_WriteRegDbg((me_uintptr_t)arg3, ME_REGID_ESI, &regs);
+    ME_WriteRegDbg((me_uintptr_t)arg4, ME_REGID_EDI, &regs);
+    ME_WriteRegDbg((me_uintptr_t)arg5, ME_REGID_EBP, &regs);
 #   endif
 #   endif
 
@@ -2718,8 +2717,7 @@ ME_SyscallEx(me_pid_t   pid,
 
     ME_WriteMemoryDbg(pid, inj_addr, old_code, sizeof(old_code));
     ME_SetRegsDbg(pid, old_regs);
-    ME_DetachDbg(pid);
-
+L_DETACH_AND_EXIT:
     if (!debugged)
         ME_DetachDbg(pid);
 
@@ -2974,6 +2972,8 @@ ME_WriteMemoryDbg(me_pid_t     pid,
             data = *(long *)&src[i];
             ptrace(PTRACE_POKEDATA, pid, (&((me_byte_t *)dst)[i]), data);
         }
+
+        byte_count = i;
     }
 #   endif
 
@@ -3699,6 +3699,57 @@ ME_WriteRegDbg(me_uintptr_t val,
 }
 
 ME_API me_bool_t
+ME_WaitDbg(me_pid_t pid)
+{
+    me_bool_t ret = ME_FALSE;
+
+    if (pid == (me_pid_t)ME_BAD)
+        return ret;
+
+#   if ME_OS == ME_OS_WIN
+    {
+
+    }
+#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
+    {
+        int status;
+        ret = waitpid(pid,
+                      &status,
+                      WSTOPPED) != (pid_t)-1 ? ME_TRUE : ME_FALSE;
+    }
+#   endif
+
+    return ret;
+}
+
+ME_API me_bool_t
+ME_StepDbg(me_pid_t pid)
+{
+    me_bool_t ret = ME_FALSE;
+
+    if (pid == (me_pid_t)ME_BAD)
+        return ret;
+
+#   if ME_OS == ME_OS_WIN
+    {
+
+    }
+#   elif ME_OS == ME_OS_LINUX
+    {
+        ret = ptrace(PTRACE_SINGLESTEP, pid,
+                     NULL, NULL) != -1 ? ME_TRUE : ME_FALSE;
+    }
+#   elif ME_OS == ME_OS_BSD
+    {
+        ret = ptrace(PT_STEP, pid,
+                     NULL, NULL) != -1 ? ME_TRUE : ME_FALSE;
+    }
+#   endif
+
+    return ret;
+}
+
+ME_API me_bool_t
 ME_BreakDbg(me_pid_t pid)
 {
     me_bool_t ret = ME_FALSE;
@@ -3725,6 +3776,8 @@ ME_BreakDbg(me_pid_t pid)
             ret = ME_TRUE;
     }
 #   endif
+
+    return ret;
 }
 
 ME_API me_bool_t
@@ -3750,6 +3803,8 @@ ME_KillDbg(me_pid_t pid)
             ret = ME_TRUE;
     }
 #   endif
+
+    return ret;
 }
 
 #endif

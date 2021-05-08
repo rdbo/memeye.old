@@ -140,6 +140,7 @@
 
 /* Others */
 #define ME_NULL  0
+#define ME_NULLPTR (me_void_t *)ME_NULL
 #define ME_FALSE 0
 #define ME_TRUE  (!ME_FALSE)
 #define ME_BAD  -1

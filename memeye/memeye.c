@@ -2664,8 +2664,8 @@ ME_SyscallEx(me_pid_t   pid,
 
     debugged = ME_GetStateDbg(pid);
 
-    if (!debugged)
-        ME_AttachDbg(pid);
+    if (!debugged && !ME_AttachDbg(pid))
+        return ret;
 
     ME_GetRegsDbg(pid, &old_regs);
     regs = old_regs;
@@ -2680,7 +2680,7 @@ ME_SyscallEx(me_pid_t   pid,
     if (!ME_ReadMemoryDbg(pid, inj_addr, old_code, sizeof(old_code)) ||
         !ME_WriteMemoryDbg(pid, inj_addr, code, sizeof(code)))
     {
-        goto L_DETACH_AND_EXIT;
+        goto L_DETACH;
     }
     
 #   if ME_ARCH == ME_ARCH_X86
@@ -2717,7 +2717,7 @@ ME_SyscallEx(me_pid_t   pid,
 
     ME_WriteMemoryDbg(pid, inj_addr, old_code, sizeof(old_code));
     ME_SetRegsDbg(pid, old_regs);
-L_DETACH_AND_EXIT:
+L_DETACH:
     if (!debugged)
         ME_DetachDbg(pid);
 

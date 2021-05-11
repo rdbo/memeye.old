@@ -773,7 +773,10 @@ ME_API me_bool_t
 ME_ContinueDbg(me_pid_t pid);
 
 ME_API me_bool_t
-ME_WaitDbg(me_pid_t pid);
+ME_WaitDbg(me_void_t);
+
+ME_API me_bool_t
+ME_WaitProcessDbg(me_pid_t pid);
 
 ME_API me_bool_t
 ME_StepDbg(me_pid_t pid);

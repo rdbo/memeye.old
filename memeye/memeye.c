@@ -2651,12 +2651,12 @@ ME_SyscallEx(me_pid_t   pid,
 #   if ME_ARCH_SIZE == 64
     me_byte_t code[] = 
     {
-        0xCD, 0x80
+        0x0F, 0x05
     };
 #   else
     me_byte_t code[] = 
     {
-        0x0F, 0x05
+        0xCD, 0x80
     };
 #   endif
 #   endif
@@ -2664,8 +2664,14 @@ ME_SyscallEx(me_pid_t   pid,
 
     debugged = ME_GetStateDbg(pid);
 
-    if (!debugged && !ME_AttachDbg(pid))
-        return ret;
+    if (!debugged)
+    {
+        me_bool_t check;
+        check = ME_AttachDbg(pid);
+        check &= ME_WaitDbg();
+        if (!check)
+            return ret;
+    }
 
     ME_GetRegsDbg(pid, &old_regs);
     regs = old_regs;
@@ -2705,7 +2711,7 @@ ME_SyscallEx(me_pid_t   pid,
 
     ME_SetRegsDbg(pid, regs);
     ME_StepDbg(pid);
-    ME_WaitDbg(pid);
+    ME_WaitProcessDbg(pid);
     ME_GetRegsDbg(pid, &regs);
 #   if ME_ARCH == ME_ARCH_X86
 #   if ME_ARCH_SIZE == 64
@@ -3699,7 +3705,24 @@ ME_WriteRegDbg(me_uintptr_t val,
 }
 
 ME_API me_bool_t
-ME_WaitDbg(me_pid_t pid)
+ME_WaitDbg(me_void_t)
+{
+#   if ME_OS == ME_OS_WIN
+    {
+
+    }
+#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
+    {
+        int status;
+        wait(&status);
+    }
+#   endif
+
+    return ME_TRUE;
+}
+
+ME_API me_bool_t
+ME_WaitProcessDbg(me_pid_t pid)
 {
     me_bool_t ret = ME_FALSE;
 

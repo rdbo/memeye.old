@@ -2934,12 +2934,11 @@ ME_ReadMemoryDbg(me_pid_t     pid,
                                pid,
                                (&((me_byte_t *)src)[i]),
                                NULL);
-            me_byte_t *byte_data = (me_byte_t *)&data;
             
-            if ((data = ptrace(PTRACE_PEEKDATA, pid, src, NULL)) == -1)
+            if (data == -1)
                 return byte_count;
 
-            dst[i] = byte_data[sizeof(long) - 1];
+            dst[i] = (me_byte_t)data;
         }
 
         byte_count = i;
@@ -2970,16 +2969,32 @@ ME_WriteMemoryDbg(me_pid_t     pid,
     }
 #   elif ME_OS == ME_OS_LINUX
     {
-        long data = 0;
         me_size_t i;
+        me_size_t buf_size = size + sizeof(long) - (size % sizeof(long));
+        me_byte_t *buf = (me_byte_t *)ME_malloc(buf_size);
 
-        for (i = 0; i < size; i += sizeof(data), data = 0)
+        if (!buf)
+            return byte_count;
+
+        if (!ME_ReadMemoryDbg(pid, dst, buf, buf_size))
+            goto L_CLEAN;
+
+        for (i = 0; i < size; ++i)
+            buf[i] = src[i];
+
+        for (i = 0; i < buf_size; i += sizeof(long))
         {
-            data = *(long *)&src[i];
-            ptrace(PTRACE_POKEDATA, pid, (&((me_byte_t *)dst)[i]), data);
+            long data = *(long *)&buf[i];
+            if (ptrace(PTRACE_POKEDATA, pid,
+                       (&((me_byte_t *)dst)[i]), data) == -1)
+            {
+                goto L_CLEAN;
+            }
         }
 
         byte_count = i;
+    L_CLEAN:
+        ME_free(buf);
     }
 #   endif
 

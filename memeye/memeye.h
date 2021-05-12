@@ -558,7 +558,8 @@ ME_LoadModule(me_tstring_t path,
 ME_API me_bool_t
 ME_LoadModule2(me_tstring_t path,
                me_module_t *pmod,
-               me_void_t   *reserved);
+               me_void_t   *reserved,
+               ...);
 
 ME_API me_bool_t
 ME_UnloadModuleEx(me_pid_t    pid,

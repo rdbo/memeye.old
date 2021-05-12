@@ -1783,7 +1783,82 @@ ME_LoadModule(me_tstring_t path,
 #   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
     {
         int mode = RTLD_LAZY;
-        ret = ME_LoadModule2(path, pmod, (me_void_t *)&mode);
+        if (pmod)
+        {
+            me_tchar_t *maps_file = (me_tchar_t *)ME_NULL;
+            {
+                int fd;
+                me_tchar_t maps_path[64] = { 0 };
+                me_tchar_t read_buf[1024] = { 0 };
+                me_size_t  read_len = ME_ARRLEN(read_buf);
+                me_size_t  read_count = 0;
+                me_tchar_t *old_maps_file;
+                me_pid_t   pid = ME_GetProcess();
+
+                ME_SNPRINTF(maps_path, ME_ARRLEN(maps_path) - 1,
+                            ME_STR("/proc/%d/maps"), pid);
+                fd = open(maps_path, O_RDONLY);
+                if (fd == -1)
+                    return ret;
+
+                while((read(fd, read_buf, sizeof(read_buf))) > 0)
+                {
+                    old_maps_file = maps_file;
+                    maps_file = (me_tchar_t *)ME_calloc(
+                        read_len * (++read_count),
+                        sizeof(maps_file[0])
+                    );
+
+                    if (old_maps_file != (me_tchar_t *)ME_NULL)
+                    {
+                        if (maps_file)
+                        {
+                            ME_MEMCPY(
+                                maps_file, old_maps_file,
+                                (read_count - 1) *
+                                    read_len *
+                                    sizeof(maps_file[0])
+                            );
+                        }
+
+                        ME_free(old_maps_file);
+                    }
+
+                    if (!maps_file)
+                        return ret;
+
+                    ME_MEMCPY(&maps_file[(read_count - 1) * read_len], 
+                            read_buf, sizeof(read_buf));
+                }
+
+                old_maps_file = maps_file;
+                maps_file = ME_calloc(
+                        (read_len * read_count) + 1,
+                        sizeof(maps_file[0])
+                );
+
+                if (maps_file)
+                {
+                    ME_MEMCPY(maps_file, old_maps_file,
+                            read_len * read_count);
+                    maps_file[(read_len * read_count)] = ME_STR('\00');
+                }
+
+                ME_free(old_maps_file);
+
+                if (!maps_file)
+                    return ret;
+            }
+
+            ret = ME_LoadModule2(path, pmod, (me_void_t *)&mode, maps_file);
+
+            ME_free(maps_file);
+        }
+
+        else
+        {
+            ret = ME_LoadModule2(path, pmod, (me_void_t *)&mode);
+        }
     }
 #   endif
 
@@ -1793,7 +1868,8 @@ ME_LoadModule(me_tstring_t path,
 ME_API me_bool_t
 ME_LoadModule2(me_tstring_t path,
                me_module_t *pmod,
-               me_void_t   *reserved)
+               me_void_t   *reserved,
+               ...)
 {
     me_bool_t ret = ME_FALSE;
 
@@ -1808,12 +1884,21 @@ ME_LoadModule2(me_tstring_t path,
     {
         int *pmode = (int *)reserved;
         ret = !dlopen(path, *pmode) ? ME_TRUE : ME_FALSE;
+        if (pmod)
+        {
+            me_tchar_t *maps_file;
+            va_list va;
+            va_start(va, reserved);
+            maps_file = va_arg(va, me_tchar_t *);
+            va_end(va);
+            reserved = (me_void_t *)maps_file;
+        }
     }
 #   endif
 
     if (pmod && ret == ME_TRUE)
     {
-        ME_GetModule(path, pmod); /* FIXME */
+        ME_GetModule2(path, pmod, reserved);
     }
 
     return ret;

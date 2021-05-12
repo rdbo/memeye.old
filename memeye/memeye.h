@@ -178,6 +178,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <stdarg.h>
 #include <string.h>
 #include <ctype.h>
 #include <memory.h>
@@ -540,18 +541,23 @@ ME_GetModuleName2(me_module_t mod,
 
 ME_API me_bool_t
 ME_LoadModuleEx(me_pid_t     pid,
-                me_tstring_t path);
+                me_tstring_t path,
+                me_module_t *pmod);
 
 ME_API me_bool_t
 ME_LoadModule2Ex(me_pid_t     pid,
                  me_tstring_t path,
-                 me_void_t   *reserved);
+                 me_module_t *pmod,
+                 me_void_t   *reserved,
+                 ...);
 
 ME_API me_bool_t
-ME_LoadModule(me_tstring_t path);
+ME_LoadModule(me_tstring_t path,
+              me_module_t *pmod);
 
 ME_API me_bool_t
 ME_LoadModule2(me_tstring_t path,
+               me_module_t *pmod,
                me_void_t   *reserved);
 
 ME_API me_bool_t
@@ -770,13 +776,13 @@ ME_WriteRegDbg(me_uintptr_t val,
                me_regs_t   *pregs);
 
 ME_API me_bool_t
-ME_ContinueDbg(me_pid_t pid);
-
-ME_API me_bool_t
 ME_WaitDbg(me_void_t);
 
 ME_API me_bool_t
 ME_WaitProcessDbg(me_pid_t pid);
+
+ME_API me_bool_t
+ME_ContinueDbg(me_pid_t pid);
 
 ME_API me_bool_t
 ME_StepDbg(me_pid_t pid);

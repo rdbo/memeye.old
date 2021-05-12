@@ -1883,7 +1883,7 @@ ME_LoadModule2(me_tstring_t path,
 #   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
     {
         int *pmode = (int *)reserved;
-        ret = !dlopen(path, *pmode) ? ME_TRUE : ME_FALSE;
+        ret = dlopen(path, *pmode) ? ME_TRUE : ME_FALSE;
         if (pmod)
         {
             me_tchar_t *maps_file;

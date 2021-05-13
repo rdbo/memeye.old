@@ -1758,7 +1758,6 @@ ME_LoadModule2Ex(me_pid_t     pid,
     L_FREE:
         ME_FreeMemoryEx(pid, inj_addr, inj_size);
 
-        reserved = maps_file;
         ret = ME_TRUE;
     }
 #   endif
@@ -1826,15 +1825,240 @@ ME_UnloadModuleEx(me_pid_t    pid,
 
 #   if ME_OS == ME_OS_WIN
     {
-        
+        ret = ME_UnloadModule2Ex(pid, mod, ME_NULLPTR);
     }
-#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_LINUX
+#   elif ME_OS == ME_OS_LINUX
+    {
+        me_tchar_t *maps_file = (me_tchar_t *)ME_NULL;
+        {
+            int fd;
+            me_tchar_t maps_path[64] = { 0 };
+            me_tchar_t read_buf[1024] = { 0 };
+            me_size_t  read_len = ME_ARRLEN(read_buf);
+            me_size_t  read_count = 0;
+            me_tchar_t *old_maps_file;
+
+            ME_SNPRINTF(maps_path, ME_ARRLEN(maps_path) - 1,
+                        ME_STR("/proc/%d/maps"), pid);
+            fd = open(maps_path, O_RDONLY);
+            if (fd == -1)
+                return ret;
+
+            while((read(fd, read_buf, sizeof(read_buf))) > 0)
+            {
+                old_maps_file = maps_file;
+                maps_file = (me_tchar_t *)ME_calloc(
+                    read_len * (++read_count),
+                    sizeof(maps_file[0])
+                );
+
+                if (old_maps_file != (me_tchar_t *)ME_NULL)
+                {
+                    if (maps_file)
+                    {
+                        ME_MEMCPY(
+                            maps_file, old_maps_file,
+                            (read_count - 1) *
+                                read_len *
+                                sizeof(maps_file[0])
+                        );
+                    }
+
+                    ME_free(old_maps_file);
+                }
+
+                if (!maps_file)
+                    return ret;
+
+                ME_MEMCPY(&maps_file[(read_count - 1) * read_len], 
+                          read_buf, sizeof(read_buf));
+            }
+
+            old_maps_file = maps_file;
+            maps_file = ME_calloc(
+                    (read_len * read_count) + 1,
+                    sizeof(maps_file[0])
+            );
+
+            if (maps_file)
+            {
+                ME_MEMCPY(maps_file, old_maps_file,
+                          read_len * read_count);
+                maps_file[(read_len * read_count)] = ME_STR('\00');
+            }
+
+            ME_free(old_maps_file);
+
+            if (!maps_file)
+                return ret;
+        }
+
+        ret = ME_UnloadModule2Ex(pid, mod, (me_void_t *)maps_file);
+
+        ME_free(maps_file);
+    }
+#   elif ME_OS == ME_OS_BSD
     {
 
     }
 #   endif
 
     return ret;
+}
+
+ME_API me_bool_t
+ME_UnloadModule2Ex(me_pid_t    pid,
+                   me_module_t mod,
+                   me_void_t  *reserved)
+{
+    /* WIP */
+    
+    me_bool_t ret = ME_FALSE;
+
+    if (pid == (me_pid_t)ME_BAD)
+        return ret;
+
+#   if ME_OS == ME_OS_WIN
+    {
+
+    }
+#   elif ME_OS == ME_OS_LINUX
+    {
+        me_tchar_t *maps_file = (me_tchar_t *)reserved;
+        me_address_t dlclose_ex;
+        me_address_t inj_addr;
+        me_size_t inj_size;
+        void *mod_handle;
+#       if ME_ARCH == ME_ARCH_X86
+#       if ME_ARCH_SIZE == 64
+        me_byte_t code[] =
+        {
+            0xFF, 0xD0, /* call rax */
+            0xCC        /* int3 */
+        };
+#       else
+        me_byte_t code[] =
+        {
+            0x53,       /* push ebx */
+            0xFF, 0xD0, /* call eax */
+            0xCC,       /* int3 */
+        };
+#       endif
+#       endif
+
+        if (!maps_file)
+            return ret;
+
+        {
+            me_module_t libc_mod;
+            me_tchar_t  libc_path[ME_PATH_MAX];
+            void *libc_handle;
+
+            if (!ME_FindModule2Ex(pid, ME_STR("/libc-"),
+                                  &libc_mod, maps_file) ||
+                !ME_FindModule2Ex(pid, ME_STR("/libc."),
+                                  &libc_mod, maps_file))
+            {
+                return ret;
+            }
+
+            if (!ME_GetModulePath2Ex(pid, libc_mod, libc_path,
+                                     ME_ARRLEN(libc_path), maps_file))
+            {
+                return ret;
+            }
+
+            libc_handle = dlopen(libc_path, RTLD_NOW);
+
+            if (!libc_handle)
+                return ret;
+
+            {
+                Dl_info info;
+                me_address_t dlclose_in = (me_address_t)(
+                    dlsym(libc_handle, "__libc_dlclose")
+                );
+
+                if (!dlclose_in)
+                    return ret;
+
+                if (!dladdr(dlclose_in, &info))
+                    return ret;
+
+                dlclose_ex = (me_address_t)(
+                    (me_uintptr_t)libc_mod.base +
+                    ((me_uintptr_t)dlclose_in - (me_uintptr_t)info.dli_fbase)
+                );
+            }
+
+            dlclose(libc_handle);
+        }
+
+        {
+            me_bool_t check;
+
+            inj_size = sizeof(code);
+            inj_addr = ME_AllocateMemoryEx(pid, inj_size, ME_PROT_XRW);
+
+            if (inj_addr == (me_address_t)ME_BAD)
+                return ret;
+
+            check = ME_WriteMemoryEx(pid, inj_addr, code, sizeof(code)) ?
+                ME_TRUE : ME_FALSE;
+
+            if (!check)
+                goto L_FREE;
+        }
+
+        {
+            struct user_regs_struct regs, old_regs;
+            me_bool_t debugged;
+
+            debugged = ME_GetStateDbg(pid);
+
+            if (!debugged)
+            {
+                me_bool_t check;
+                check = ME_AttachDbg(pid);
+                check &= ME_WaitDbg();
+                if (!check)
+                    return ret;
+            }
+
+            ME_GetRegsDbg(pid, &old_regs);
+            regs = old_regs;
+            
+#           if ME_ARCH == ME_ARCH_X86
+#           if ME_ARCH_SIZE == 64
+            ME_WriteRegDbg((me_uintptr_t)dlclose_ex, ME_REGID_RAX, &regs);
+            ME_WriteRegDbg((me_uintptr_t)mod_handle, ME_REGID_RDI, &regs);
+            ME_WriteRegDbg((me_uintptr_t)inj_addr,   ME_REGID_RIP, &regs);
+#           else
+            ME_WriteRegDbg((me_uintptr_t)dlclose_ex, ME_REGID_EAX, &regs);
+            ME_WriteRegDbg((me_uintptr_t)mod_handle, ME_REGID_EBX, &regs);
+            ME_WriteRegDbg((me_uintptr_t)inj_addr,   ME_REGID_EIP, &regs);
+#           endif
+#           endif
+
+            ME_SetRegsDbg(pid, regs);
+            ME_ContinueDbg(pid);
+            ME_WaitProcessDbg(pid);
+            ME_SetRegsDbg(pid, old_regs);
+
+            if (!debugged)
+                ME_DetachDbg(pid);
+        }
+
+    L_FREE:
+        ME_FreeMemoryEx(pid, inj_addr, inj_size);
+
+        ret = ME_TRUE;
+    }
+#   elif ME_OS == ME_OS_BSD
+    {
+
+    }
+#   endif
 }
 
 ME_API me_bool_t

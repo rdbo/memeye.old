@@ -236,7 +236,7 @@ enum
      */
     ME_DETOUR_JMP64,
     /*
-     * JMP *[EIP]
+     * JMP *[RIP]
      * <ABS_ADDR>
      */
     ME_DETOUR_CALL32,
@@ -561,6 +561,11 @@ ME_LoadModule2(me_tstring_t path,
 ME_API me_bool_t
 ME_UnloadModuleEx(me_pid_t    pid,
                   me_module_t mod);
+
+ME_API me_bool_t
+ME_UnloadModule2Ex(me_pid_t    pid,
+                   me_module_t mod,
+                   me_void_t  *reserved);
 
 ME_API me_bool_t
 ME_UnloadModule(me_module_t mod);

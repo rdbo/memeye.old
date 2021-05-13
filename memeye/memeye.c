@@ -1912,7 +1912,7 @@ ME_UnloadModule2Ex(me_pid_t    pid,
                    me_void_t  *reserved)
 {
     /* WIP */
-    
+
     me_bool_t ret = ME_FALSE;
 
     if (pid == (me_pid_t)ME_BAD)
@@ -1928,7 +1928,7 @@ ME_UnloadModule2Ex(me_pid_t    pid,
         me_address_t dlclose_ex;
         me_address_t inj_addr;
         me_size_t inj_size;
-        void *mod_handle;
+        void *mod_handle = (void *)NULL; /* TODO: Get Module Handle */
 #       if ME_ARCH == ME_ARCH_X86
 #       if ME_ARCH_SIZE == 64
         me_byte_t code[] =
@@ -2059,6 +2059,8 @@ ME_UnloadModule2Ex(me_pid_t    pid,
 
     }
 #   endif
+
+    return ret;
 }
 
 ME_API me_bool_t

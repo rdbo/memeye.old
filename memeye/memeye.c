@@ -59,6 +59,91 @@ ME_free(void *ptr)
 
 /****************************************/
 
+static me_size_t
+_ME_ReadFile(me_tstring_t path,
+             me_tchar_t **out)
+{
+    me_size_t byte_count = 0;
+
+    if (!path || !out)
+        return byte_count;
+    
+#   if ME_OS == ME_OS_WIN
+    {
+
+    }
+#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
+    {
+        me_tchar_t *file_buf = (me_tchar_t *)ME_NULL;
+        {
+            int fd;
+            me_tchar_t read_buf[1024] = { 0 };
+            me_size_t  read_len = ME_ARRLEN(read_buf);
+            me_size_t  read_count = 0;
+            me_tchar_t *old_file_buf;
+
+            fd = open(path, O_RDONLY);
+
+            if (fd == -1)
+                return byte_count;
+
+            while((read(fd, read_buf, sizeof(read_buf))) > 0)
+            {
+                old_file_buf = file_buf;
+                file_buf = (me_tchar_t *)ME_calloc(
+                    read_len * (++read_count),
+                    sizeof(file_buf[0])
+                );
+
+                if (old_file_buf != (me_tchar_t *)ME_NULL)
+                {
+                    if (file_buf)
+                    {
+                        ME_MEMCPY(
+                            file_buf, old_file_buf,
+                            (read_count - 1) *
+                                read_len *
+                                sizeof(file_buf[0])
+                        );
+                    }
+
+                    ME_free(old_file_buf);
+                }
+
+                if (!file_buf)
+                    return byte_count;
+
+                ME_MEMCPY(&file_buf[(read_count - 1) * read_len], 
+                          read_buf, sizeof(read_buf));
+            }
+
+            old_file_buf = file_buf;
+            file_buf = ME_calloc(
+                    (read_len * read_count) + 1,
+                    sizeof(file_buf[0])
+            );
+
+            if (file_buf)
+            {
+                ME_MEMCPY(file_buf, old_file_buf,
+                          read_len * read_count);
+                file_buf[(read_len * read_count)] = ME_STR('\00');
+            }
+
+            ME_free(old_file_buf);
+
+            if (!file_buf)
+                return byte_count;
+
+            *out = file_buf;
+            byte_count = read_count * read_len;
+        }
+    }
+#   endif
+
+    return byte_count;
+}
+
 ME_API me_bool_t
 ME_EnumProcesses(me_bool_t(*callback)(me_pid_t   pid,
                                       me_void_t *arg),
@@ -136,8 +221,9 @@ ME_EnumProcesses(me_bool_t(*callback)(me_pid_t   pid,
     return ret;
 }
 
-static me_bool_t _ME_GetProcessExCallback(me_pid_t   pid,
-                                          me_void_t *arg)
+static me_bool_t
+_ME_GetProcessExCallback(me_pid_t   pid,
+                         me_void_t *arg)
 {
     _ME_GetProcessExArgs_t *parg = (_ME_GetProcessExArgs_t *)arg;
     me_tchar_t proc_path[ME_PATH_MAX] = { 0 };
@@ -560,66 +646,16 @@ ME_EnumModulesEx(me_pid_t   pid,
     {
         me_tchar_t *maps_file = (me_tchar_t *)ME_NULL;
         {
-            int fd;
             me_tchar_t maps_path[64] = { 0 };
-            me_tchar_t read_buf[1024] = { 0 };
-            me_size_t  read_len = ME_ARRLEN(read_buf);
-            me_size_t  read_count = 0;
-            me_tchar_t *old_maps_file;
 
             ME_SNPRINTF(maps_path, ME_ARRLEN(maps_path) - 1,
                         ME_STR("/proc/%d/maps"), pid);
-            fd = open(maps_path, O_RDONLY);
-            if (fd == -1)
-                return ret;
-
-            while((read(fd, read_buf, sizeof(read_buf))) > 0)
+            
+            if (!_ME_ReadFile(maps_path, &maps_file) ||
+                !maps_file)
             {
-                old_maps_file = maps_file;
-                maps_file = (me_tchar_t *)ME_calloc(
-                    read_len * (++read_count),
-                    sizeof(maps_file[0])
-                );
-
-                if (old_maps_file != (me_tchar_t *)ME_NULL)
-                {
-                    if (maps_file)
-                    {
-                        ME_MEMCPY(
-                            maps_file, old_maps_file,
-                            (read_count - 1) *
-                                read_len *
-                                sizeof(maps_file[0])
-                        );
-                    }
-
-                    ME_free(old_maps_file);
-                }
-
-                if (!maps_file)
-                    return ret;
-
-                ME_MEMCPY(&maps_file[(read_count - 1) * read_len], 
-                          read_buf, sizeof(read_buf));
-            }
-
-            old_maps_file = maps_file;
-            maps_file = ME_calloc(
-                    (read_len * read_count) + 1,
-                    sizeof(maps_file[0])
-            );
-
-            if (maps_file)
-            {
-                ME_MEMCPY(maps_file, old_maps_file,
-                          read_len * read_count);
-                maps_file[(read_len * read_count)] = ME_STR('\00');
-            }
-
-            ME_free(old_maps_file);
-
-            if (!maps_file)
                 return ret;
+            }
         }
 
         ret = ME_EnumModules2Ex(pid, callback, arg, (me_void_t *)maps_file);
@@ -910,66 +946,16 @@ ME_FindModuleEx(me_pid_t     pid,
     {
         me_tchar_t *maps_file = (me_tchar_t *)ME_NULL;
         {
-            int fd;
             me_tchar_t maps_path[64] = { 0 };
-            me_tchar_t read_buf[1024] = { 0 };
-            me_size_t  read_len = ME_ARRLEN(read_buf);
-            me_size_t  read_count = 0;
-            me_tchar_t *old_maps_file;
 
             ME_SNPRINTF(maps_path, ME_ARRLEN(maps_path) - 1,
                         ME_STR("/proc/%d/maps"), pid);
-            fd = open(maps_path, O_RDONLY);
-            if (fd == -1)
-                return ret;
-
-            while((read(fd, read_buf, sizeof(read_buf))) > 0)
+            
+            if (!_ME_ReadFile(maps_path, &maps_file) ||
+                !maps_file)
             {
-                old_maps_file = maps_file;
-                maps_file = (me_tchar_t *)ME_calloc(
-                    read_len * (++read_count),
-                    sizeof(maps_file[0])
-                );
-
-                if (old_maps_file != (me_tchar_t *)ME_NULL)
-                {
-                    if (maps_file)
-                    {
-                        ME_MEMCPY(
-                            maps_file, old_maps_file,
-                            (read_count - 1) *
-                                read_len *
-                                sizeof(maps_file[0])
-                        );
-                    }
-
-                    ME_free(old_maps_file);
-                }
-
-                if (!maps_file)
-                    return ret;
-
-                ME_MEMCPY(&maps_file[(read_count - 1) * read_len], 
-                          read_buf, sizeof(read_buf));
-            }
-
-            old_maps_file = maps_file;
-            maps_file = ME_calloc(
-                    (read_len * read_count) + 1,
-                    sizeof(maps_file[0])
-            );
-
-            if (maps_file)
-            {
-                ME_MEMCPY(maps_file, old_maps_file,
-                          read_len * read_count);
-                maps_file[(read_len * read_count)] = ME_STR('\00');
-            }
-
-            ME_free(old_maps_file);
-
-            if (!maps_file)
                 return ret;
+            }
         }
 
         ret = ME_FindModule2Ex(pid, mod_ref, pmod, (me_void_t *)maps_file);
@@ -1042,66 +1028,16 @@ ME_GetModulePathEx(me_pid_t    pid,
     {
         me_tchar_t *maps_file = (me_tchar_t *)ME_NULL;
         {
-            int fd;
             me_tchar_t maps_path[64] = { 0 };
-            me_tchar_t read_buf[1024] = { 0 };
-            me_size_t  read_len = ME_ARRLEN(read_buf);
-            me_size_t  read_count = 0;
-            me_tchar_t *old_maps_file;
 
             ME_SNPRINTF(maps_path, ME_ARRLEN(maps_path) - 1,
                         ME_STR("/proc/%d/maps"), pid);
-            fd = open(maps_path, O_RDONLY);
-            if (fd == -1)
-                return chr_count;
-
-            while((read(fd, read_buf, sizeof(read_buf))) > 0)
+            
+            if (!_ME_ReadFile(maps_path, &maps_file) ||
+                !maps_file)
             {
-                old_maps_file = maps_file;
-                maps_file = (me_tchar_t *)ME_calloc(
-                    read_len * (++read_count),
-                    sizeof(maps_file[0])
-                );
-
-                if (old_maps_file != (me_tchar_t *)ME_NULL)
-                {
-                    if (maps_file)
-                    {
-                        ME_MEMCPY(
-                            maps_file, old_maps_file,
-                            (read_count - 1) *
-                                read_len *
-                                sizeof(maps_file[0])
-                        );
-                    }
-
-                    ME_free(old_maps_file);
-                }
-
-                if (!maps_file)
-                    return chr_count;
-
-                ME_MEMCPY(&maps_file[(read_count - 1) * read_len], 
-                          read_buf, sizeof(read_buf));
-            }
-
-            old_maps_file = maps_file;
-            maps_file = ME_calloc(
-                    (read_len * read_count) + 1,
-                    sizeof(maps_file[0])
-            );
-
-            if (maps_file)
-            {
-                ME_MEMCPY(maps_file, old_maps_file,
-                          read_len * read_count);
-                maps_file[(read_len * read_count)] = ME_STR('\00');
-            }
-
-            ME_free(old_maps_file);
-
-            if (!maps_file)
                 return chr_count;
+            }
         }
 
         chr_count = ME_GetModulePath2Ex(pid, mod, mod_path,
@@ -1491,66 +1427,16 @@ ME_LoadModuleEx(me_pid_t     pid,
         int mode = RTLD_LAZY;
         me_tchar_t *maps_file = (me_tchar_t *)ME_NULL;
         {
-            int fd;
             me_tchar_t maps_path[64] = { 0 };
-            me_tchar_t read_buf[1024] = { 0 };
-            me_size_t  read_len = ME_ARRLEN(read_buf);
-            me_size_t  read_count = 0;
-            me_tchar_t *old_maps_file;
 
             ME_SNPRINTF(maps_path, ME_ARRLEN(maps_path) - 1,
                         ME_STR("/proc/%d/maps"), pid);
-            fd = open(maps_path, O_RDONLY);
-            if (fd == -1)
-                return ret;
-
-            while((read(fd, read_buf, sizeof(read_buf))) > 0)
+            
+            if (!_ME_ReadFile(maps_path, &maps_file) ||
+                !maps_file)
             {
-                old_maps_file = maps_file;
-                maps_file = (me_tchar_t *)ME_calloc(
-                    read_len * (++read_count),
-                    sizeof(maps_file[0])
-                );
-
-                if (old_maps_file != (me_tchar_t *)ME_NULL)
-                {
-                    if (maps_file)
-                    {
-                        ME_MEMCPY(
-                            maps_file, old_maps_file,
-                            (read_count - 1) *
-                                read_len *
-                                sizeof(maps_file[0])
-                        );
-                    }
-
-                    ME_free(old_maps_file);
-                }
-
-                if (!maps_file)
-                    return ret;
-
-                ME_MEMCPY(&maps_file[(read_count - 1) * read_len], 
-                          read_buf, sizeof(read_buf));
-            }
-
-            old_maps_file = maps_file;
-            maps_file = ME_calloc(
-                    (read_len * read_count) + 1,
-                    sizeof(maps_file[0])
-            );
-
-            if (maps_file)
-            {
-                ME_MEMCPY(maps_file, old_maps_file,
-                          read_len * read_count);
-                maps_file[(read_len * read_count)] = ME_STR('\00');
-            }
-
-            ME_free(old_maps_file);
-
-            if (!maps_file)
                 return ret;
+            }
         }
 
         ret = ME_LoadModule2Ex(pid, path, (me_void_t *)&mode, maps_file);
@@ -1831,66 +1717,16 @@ ME_UnloadModuleEx(me_pid_t    pid,
     {
         me_tchar_t *maps_file = (me_tchar_t *)ME_NULL;
         {
-            int fd;
             me_tchar_t maps_path[64] = { 0 };
-            me_tchar_t read_buf[1024] = { 0 };
-            me_size_t  read_len = ME_ARRLEN(read_buf);
-            me_size_t  read_count = 0;
-            me_tchar_t *old_maps_file;
 
             ME_SNPRINTF(maps_path, ME_ARRLEN(maps_path) - 1,
                         ME_STR("/proc/%d/maps"), pid);
-            fd = open(maps_path, O_RDONLY);
-            if (fd == -1)
-                return ret;
-
-            while((read(fd, read_buf, sizeof(read_buf))) > 0)
+            
+            if (!_ME_ReadFile(maps_path, &maps_file) ||
+                !maps_file)
             {
-                old_maps_file = maps_file;
-                maps_file = (me_tchar_t *)ME_calloc(
-                    read_len * (++read_count),
-                    sizeof(maps_file[0])
-                );
-
-                if (old_maps_file != (me_tchar_t *)ME_NULL)
-                {
-                    if (maps_file)
-                    {
-                        ME_MEMCPY(
-                            maps_file, old_maps_file,
-                            (read_count - 1) *
-                                read_len *
-                                sizeof(maps_file[0])
-                        );
-                    }
-
-                    ME_free(old_maps_file);
-                }
-
-                if (!maps_file)
-                    return ret;
-
-                ME_MEMCPY(&maps_file[(read_count - 1) * read_len], 
-                          read_buf, sizeof(read_buf));
-            }
-
-            old_maps_file = maps_file;
-            maps_file = ME_calloc(
-                    (read_len * read_count) + 1,
-                    sizeof(maps_file[0])
-            );
-
-            if (maps_file)
-            {
-                ME_MEMCPY(maps_file, old_maps_file,
-                          read_len * read_count);
-                maps_file[(read_len * read_count)] = ME_STR('\00');
-            }
-
-            ME_free(old_maps_file);
-
-            if (!maps_file)
                 return ret;
+            }
         }
 
         ret = ME_UnloadModule2Ex(pid, mod, (me_void_t *)maps_file);
@@ -2117,66 +1953,16 @@ ME_EnumPagesEx(me_pid_t   pid,
     {
         me_tchar_t *maps_file = (me_tchar_t *)ME_NULL;
         {
-            int fd;
             me_tchar_t maps_path[64] = { 0 };
-            me_tchar_t read_buf[1024] = { 0 };
-            me_size_t  read_len = ME_ARRLEN(read_buf);
-            me_size_t  read_count = 0;
-            me_tchar_t *old_maps_file;
 
             ME_SNPRINTF(maps_path, ME_ARRLEN(maps_path) - 1,
                         ME_STR("/proc/%d/maps"), pid);
-            fd = open(maps_path, O_RDONLY);
-            if (fd == -1)
-                return ret;
-
-            while((read(fd, read_buf, sizeof(read_buf))) > 0)
+            
+            if (!_ME_ReadFile(maps_path, &maps_file) ||
+                !maps_file)
             {
-                old_maps_file = maps_file;
-                maps_file = (me_tchar_t *)ME_calloc(
-                    read_len * (++read_count),
-                    sizeof(maps_file[0])
-                );
-
-                if (old_maps_file != (me_tchar_t *)ME_NULL)
-                {
-                    if (maps_file)
-                    {
-                        ME_MEMCPY(
-                            maps_file, old_maps_file,
-                            (read_count - 1) *
-                                read_len *
-                                sizeof(maps_file[0])
-                        );
-                    }
-
-                    ME_free(old_maps_file);
-                }
-
-                if (!maps_file)
-                    return ret;
-
-                ME_MEMCPY(&maps_file[(read_count - 1) * read_len], 
-                          read_buf, sizeof(read_buf));
-            }
-
-            old_maps_file = maps_file;
-            maps_file = ME_calloc(
-                    (read_len * read_count) + 1,
-                    sizeof(maps_file[0])
-            );
-
-            if (maps_file)
-            {
-                ME_MEMCPY(maps_file, old_maps_file,
-                          read_len * read_count);
-                maps_file[(read_len * read_count)] = ME_STR('\00');
-            }
-
-            ME_free(old_maps_file);
-
-            if (!maps_file)
                 return ret;
+            }
         }
 
         ret = ME_EnumPages2Ex(pid, callback, arg, (me_void_t *)maps_file);

@@ -177,7 +177,6 @@
 /* Includes */
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
 #include <stdarg.h>
 #include <string.h>
 #include <ctype.h>
@@ -290,68 +289,68 @@ enum
 };
 
 /* Types */
-typedef void         me_void_t;
-typedef int          me_int_t;
-typedef unsigned int me_uint_t;
-typedef me_int_t     me_bool_t;
+typedef void             me_void_t;
+typedef int              me_int_t;
+typedef unsigned int     me_uint_t;
+typedef me_int_t         me_bool_t;
 
-typedef int8_t       me_int8_t;
-typedef int16_t      me_int16_t;
-typedef int32_t      me_int32_t;
-typedef int64_t      me_int64_t;
+typedef signed char      me_int8_t;
+typedef signed short     me_int16_t;
+typedef signed int       me_int32_t;
+typedef signed long      me_int64_t;
 
-typedef uint8_t      me_uint8_t;
-typedef uint16_t     me_uint16_t;
-typedef uint32_t     me_uint32_t;
-typedef uint64_t     me_uint64_t;
+typedef unsigned char    me_uint8_t;
+typedef unsigned short   me_uint16_t;
+typedef unsigned int     me_uint32_t;
+typedef unsigned long    me_uint64_t;
 
-typedef me_uint8_t   me_byte_t;
-typedef me_uint16_t  me_word_t;
-typedef me_uint32_t  me_dword_t;
-typedef me_uint64_t  me_qword_t;
+typedef me_uint8_t       me_byte_t;
+typedef me_uint16_t      me_word_t;
+typedef me_uint32_t      me_dword_t;
+typedef me_uint64_t      me_qword_t;
 
-typedef intptr_t     me_intptr_t;
-typedef uintptr_t    me_uintptr_t;
-typedef me_void_t   *me_voidptr_t;
+typedef long             me_intptr_t;
+typedef unsigned long    me_uintptr_t;
+typedef me_void_t       *me_voidptr_t;
 
-typedef size_t       me_size_t;
-typedef me_voidptr_t me_address_t;
+typedef size_t           me_size_t;
+typedef me_voidptr_t     me_address_t;
 
-typedef char         me_char_t;
-typedef wchar_t      me_wchar_t;
+typedef char             me_char_t;
+typedef wchar_t          me_wchar_t;
 #if ME_CHARSET == ME_CHARSET_UC
-typedef me_wchar_t   me_tchar_t;
+typedef me_wchar_t       me_tchar_t;
 #else
-typedef me_char_t    me_tchar_t;
+typedef me_char_t        me_tchar_t;
 #endif
 
-typedef me_char_t   *me_cstring_t;
-typedef me_wchar_t  *me_wstring_t;
-typedef me_tchar_t  *me_tstring_t;
+typedef me_char_t       *me_cstring_t;
+typedef me_wchar_t      *me_wstring_t;
+typedef me_tchar_t      *me_tstring_t;
 #if ME_LANG == ME_LANG_C
-typedef me_tstring_t me_string_t;
+typedef me_tstring_t     me_string_t;
 #endif
 
 #if ME_OS == ME_OS_WIN
-typedef DWORD        me_pid_t;
-typedef DWORD        me_prot_t;
-typedef DWORD        me_flags_t;
-typedef CONTEXT      me_regs_t;
+typedef DWORD            me_pid_t;
+typedef DWORD            me_prot_t;
+typedef DWORD            me_flags_t;
+typedef CONTEXT          me_regs_t;
 #elif ME_OS == ME_OS_LINUX
-typedef pid_t        me_pid_t;
-typedef me_int_t     me_prot_t;
-typedef me_int_t     me_flags_t;
+typedef pid_t            me_pid_t;
+typedef me_int_t         me_prot_t;
+typedef me_int_t         me_flags_t;
 typedef struct user_regs_struct
-                     me_regs_t;
+                         me_regs_t;
 #elif ME_OS == ME_OS_BSD
-typedef pid_t        me_pid_t;
-typedef me_int_t     me_prot_t;
-typedef me_int_t     me_flags_t;
-typedef struct reg   me_regs_t;
+typedef pid_t            me_pid_t;
+typedef me_int_t         me_prot_t;
+typedef me_int_t         me_flags_t;
+typedef struct reg       me_regs_t;
 #endif
-typedef me_int_t     me_arch_t;
-typedef me_int_t     me_detour_t;
-typedef me_int_t     me_regid_t;
+typedef me_int_t         me_arch_t;
+typedef me_int_t         me_detour_t;
+typedef me_int_t         me_regid_t;
 
 typedef struct me_module_t
 {

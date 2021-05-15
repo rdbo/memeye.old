@@ -1747,8 +1747,6 @@ ME_UnloadModule2Ex(me_pid_t    pid,
                    me_module_t mod,
                    me_void_t  *reserved)
 {
-    /* WIP */
-
     me_bool_t ret = ME_FALSE;
 
     if (pid == (me_pid_t)ME_BAD)

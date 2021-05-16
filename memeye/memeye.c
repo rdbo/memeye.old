@@ -36,24 +36,56 @@ typedef struct _ME_GetPageExArgs_t
     me_address_t addr;
 } _ME_GetPageExArgs_t;
 
+typedef struct me_process_t
+{
+    me_pid_t pid;
+    struct
+    {
+#       if ME_OS == ME_OS_WIN
+        HANDLE hProcess;
+#       elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
+        me_tchar_t *maps_file;
+#       endif
+    } cache;
+} me_process_t;
+
+/****************************************/
+
+me_size_t     g_AllocRef = 0; /* Memory Leak Checking */
+me_process_t *g_ProcessCache = (me_process_t *)ME_NULL;
+me_size_t     g_ProcessCacheLength = 0;
+
 /****************************************/
 
 ME_API void *
 ME_malloc(size_t size)
 {
-    return ME_MALLOC(size);
+    void *buf = ME_MALLOC(size);
+
+    if (buf)
+        ++g_AllocRef;
+    
+    return buf;
 }
 
 ME_API void *
 ME_calloc(size_t nmemb,
           size_t size)
 {
-    return ME_CALLOC(nmemb, size);
+    void *buf = ME_CALLOC(nmemb, size);
+
+    if (buf)
+        ++g_AllocRef;
+    
+    return buf;
 }
 
 ME_API void
 ME_free(void *ptr)
 {
+    if (ptr)
+        --g_AllocRef;
+
     ME_FREE(ptr);
 }
 
@@ -144,6 +176,204 @@ _ME_ReadFile(me_tstring_t path,
     return byte_count;
 }
 
+static me_bool_t
+_ME_StartProcessCache(me_pid_t pid)
+{
+    me_bool_t ret = ME_FALSE;
+    me_process_t *old_cache;
+
+    if (pid == (me_pid_t)ME_BAD)
+        return ret;
+    
+    old_cache = g_ProcessCache;
+    g_ProcessCache = (me_process_t *)ME_calloc(
+        (g_ProcessCacheLength + 1),
+        sizeof(me_process_t)
+    );
+
+    if (!g_ProcessCache)
+    {
+        g_ProcessCache = old_cache;
+        return ret;
+    }
+
+    if (old_cache)
+    {
+        ME_MEMCPY((void *)g_ProcessCache, old_cache,
+                  g_ProcessCacheLength * sizeof(me_process_t));
+        ME_free(old_cache);
+    }
+
+    {
+        me_process_t *pcache = &g_ProcessCache[g_ProcessCacheLength];    
+        pcache->pid = pid;
+#       if ME_OS == ME_OS_WIN
+        pcache->cache.hProcess = (HANDLE)NULL;
+#       elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
+        pcache->cache.maps_file = (me_tchar_t *)ME_NULL;
+#       endif
+    }
+    
+    ++g_ProcessCacheLength;
+
+    ret = ME_TRUE;
+
+    return ret;
+}
+
+static me_bool_t
+_ME_StopProcessCache(me_pid_t pid)
+{
+    me_bool_t ret = ME_FALSE;
+    me_size_t index = (me_size_t)ME_BAD;
+
+    if (pid == (me_pid_t)ME_BAD   ||
+        g_ProcessCacheLength == 0 ||
+        !g_ProcessCache)
+    {
+        return ret;
+    }
+
+    {
+        me_size_t i;
+        for (i = 0; i < g_ProcessCacheLength; ++i)
+        {
+            if (g_ProcessCache[i].pid == pid)
+            {
+                index = i;
+                break;
+            }
+        }
+    }
+
+    if (index == (me_size_t)ME_BAD)
+        return ret;
+
+#   if ME_OS == ME_OS_WIN
+    {
+        me_process_t *pcache = &g_ProcessCache[index];
+        if (pcache->cache.hProcess)
+            CloseHandle(pcache->cache.hProcess);
+    }
+#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
+    {
+        me_process_t *pcache = &g_ProcessCache[index];
+        if (pcache->cache.maps_file)
+            ME_free(pcache->cache.maps_file);
+    }
+#   endif
+
+    {
+        me_process_t *old_cache;
+
+        old_cache = g_ProcessCache;
+        g_ProcessCache = (me_process_t *)ME_calloc(
+            (g_ProcessCacheLength - 1),
+            sizeof(me_process_t)
+        );
+
+        if (!g_ProcessCache)
+        {
+            g_ProcessCache = old_cache;
+            return ret;
+        }
+
+        ME_MEMCPY(g_ProcessCache, old_cache, index * sizeof(me_process_t));
+        ME_MEMCPY(&g_ProcessCache[index], &old_cache[index],
+                  (g_ProcessCacheLength - index) * sizeof(me_process_t));
+    }
+
+    ret = ME_TRUE;
+    return ret;
+}
+
+static me_bool_t
+_ME_UpdateProcessCache(me_pid_t pid)
+{
+    me_bool_t ret = ME_FALSE;
+    me_size_t index;
+    for (index = 0; index < g_ProcessCacheLength; ++index)
+    {
+        me_process_t *pcache = &g_ProcessCache[index];
+
+        if (pcache->pid == pid)
+        {
+#           if ME_OS == ME_OS_WIN
+            {
+                pcache->cache.hProcess = OpenProcess(PROCESS_ALL_ACCESS,
+                                                     FALSE, pid);
+            }
+#           elif ME_OS == ME_OS_LINUX
+            {
+                me_tchar_t path[64] = { 0 };
+                ME_SNPRINTF(path, ME_ARRLEN(path) - 1,
+                            ME_STR("/proc/%d/maps"), pid);
+
+                if (pcache->cache.maps_file)
+                    ME_free(pcache->cache.maps_file);
+                
+                if (_ME_ReadFile(path, &pcache->cache.maps_file))
+                    pcache->cache.maps_file = (me_tchar_t *)ME_NULL;
+            }
+#           elif ME_OS == ME_OS_BSD
+            {
+                me_tchar_t path[64] = { 0 };
+                ME_SNPRINTF(path, ME_ARRLEN(path) - 1,
+                            ME_STR("/proc/%d/map"), pid);
+
+                if (pcache->cache.maps_file)
+                    ME_free(pcache->cache.maps_file);
+
+                _ME_ReadFile(path, &pcache->cache.maps_file);
+            }
+#           endif
+
+            ret = ME_TRUE;
+        }
+    }
+
+    return ret;
+}
+
+static me_process_t *
+_ME_GetProcessCache(me_pid_t pid)
+{
+    me_process_t *pcache = (me_process_t *)ME_BAD;
+    me_size_t index = (me_size_t)ME_BAD;
+    {
+        me_size_t i;
+        for (i = 0; i < g_ProcessCacheLength; ++i)
+        {
+            if (g_ProcessCache[i].pid == pid)
+            {
+                index = i;
+                break;
+            }
+        }
+    }
+
+    if (index == (me_size_t)ME_BAD)
+        return pcache;
+
+#   if ME_OS == ME_OS_WIN
+    {
+        if (!g_ProcessCache[index].cache.hProcess)
+            _ME_UpdateProcessCache(pid);
+    }
+#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
+    {
+        if (!g_ProcessCache[index].cache.maps_file)
+            _ME_UpdateProcessCache(pid);
+    }
+#   endif
+
+    pcache = &g_ProcessCache[index];
+
+    return pcache;
+}
+
+/****************************************/
+
 ME_API me_bool_t
 ME_EnumProcesses(me_bool_t(*callback)(me_pid_t   pid,
                                       me_void_t *arg),
@@ -221,6 +451,28 @@ ME_EnumProcesses(me_bool_t(*callback)(me_pid_t   pid,
     return ret;
 }
 
+ME_API me_bool_t
+ME_OpenProcess(me_pid_t pid)
+{
+    me_bool_t ret = ME_FALSE;
+
+    if (pid == (me_pid_t)ME_BAD)
+        return ret;
+
+    if (!pid)
+        pid = ME_GetProcess();
+
+    ret = _ME_StartProcessCache(pid);
+
+    return ret;
+}
+
+ME_API me_bool_t
+ME_CloseProcess(me_pid_t pid)
+{
+    return _ME_StopProcessCache(pid);
+}
+
 static me_bool_t
 _ME_GetProcessExCallback(me_pid_t   pid,
                          me_void_t *arg)
@@ -289,7 +541,7 @@ ME_GetProcessPathEx(me_pid_t    pid,
 
 #   if ME_OS == ME_OS_WIN
     {
-        HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
+        HANDLE hProcess = _ME_GetProcessCache(pid)->cache.hProcess;
         if (!hProcess)
             return pid;
 
@@ -629,56 +881,8 @@ ME_API me_bool_t
 ME_EnumModulesEx(me_pid_t   pid,
                  me_bool_t(*callback)(me_pid_t    pid,
                                       me_module_t mod,
-                                      me_void_t  *arg,
-                                      me_void_t  *reserved),
+                                      me_void_t  *arg),
                  me_void_t *arg)
-{
-    me_bool_t ret = ME_FALSE;
-
-    if (pid == (me_pid_t)ME_BAD || !callback)
-        return ret;
-
-#   if ME_OS == ME_OS_WIN
-    {
-        ret = ME_EnumModules2Ex(pid, callback, arg, ME_NULLPTR);
-    }
-#   elif ME_OS == ME_OS_LINUX
-    {
-        me_tchar_t *maps_file = (me_tchar_t *)ME_NULL;
-        {
-            me_tchar_t maps_path[64] = { 0 };
-
-            ME_SNPRINTF(maps_path, ME_ARRLEN(maps_path) - 1,
-                        ME_STR("/proc/%d/maps"), pid);
-            
-            if (!_ME_ReadFile(maps_path, &maps_file) ||
-                !maps_file)
-            {
-                return ret;
-            }
-        }
-
-        ret = ME_EnumModules2Ex(pid, callback, arg, (me_void_t *)maps_file);
-
-        ME_free(maps_file);
-    }
-#   elif ME_OS == ME_OS_BSD
-    {
-
-    }
-#   endif
-
-    return ret;
-}
-
-ME_API me_bool_t
-ME_EnumModules2Ex(me_pid_t   pid,
-                  me_bool_t(*callback)(me_pid_t    pid,
-                                       me_module_t mod,
-                                       me_void_t  *arg,
-                                       me_void_t  *reserved),
-                  me_void_t *arg,
-                  me_void_t *reserved)
 {
     me_bool_t ret = ME_FALSE;
 
@@ -716,7 +920,13 @@ ME_EnumModules2Ex(me_pid_t   pid,
     }
 #   elif ME_OS == ME_OS_LINUX
     {
-        me_tchar_t *maps_file = (me_tchar_t *)reserved;
+        me_tchar_t *maps_file = (me_tchar_t *)ME_NULL;
+
+        {
+            me_process_t *pcache = _ME_GetProcessCache(pid);
+            if (pcache != (me_process_t *)ME_BAD)
+                maps_file = pcache->cache.maps_file;
+        }
 
         if (!maps_file)
             return ret;
@@ -780,7 +990,7 @@ ME_EnumModules2Ex(me_pid_t   pid,
                             (me_uintptr_t)mod.end - (me_uintptr_t)mod.base
                         );
 
-                        if (callback(pid, mod, arg, reserved) == ME_FALSE)
+                        if (callback(pid, mod, arg) == ME_FALSE)
                             break;
                     }
 
@@ -803,38 +1013,24 @@ ME_EnumModules2Ex(me_pid_t   pid,
 ME_API me_bool_t
 ME_EnumModules(me_bool_t(*callback)(me_pid_t    pid,
                                     me_module_t mod,
-                                    me_void_t  *arg,
-                                    me_void_t  *reserved),
+                                    me_void_t  *arg),
                me_void_t *arg)
 {
     return ME_EnumModulesEx(ME_GetProcess(), callback, arg);
 }
 
-ME_API me_bool_t
-ME_EnumModules2(me_bool_t(*callback)(me_pid_t    pid,
-                                     me_module_t mod,
-                                     me_void_t  *arg,
-                                     me_void_t  *reserved),
-                me_void_t *arg,
-                me_void_t *reserved)
-{
-    return ME_EnumModules2Ex(ME_GetProcess(), callback, arg, reserved);
-}
-
 static me_bool_t
 _ME_GetModuleExCallback(me_pid_t    pid,
                         me_module_t mod,
-                        me_void_t  *arg,
-                        me_void_t  *reserved)
+                        me_void_t  *arg)
 {
     _ME_GetModuleExArgs_t *parg = (_ME_GetModuleExArgs_t *)arg;
     me_tchar_t   mod_path[ME_PATH_MAX] = { 0 };
     me_size_t    mod_path_len;
     me_size_t    mod_ref_len = ME_STRLEN(parg->mod_ref);
 
-    if ((mod_path_len = ME_GetModulePath2Ex(pid, mod,
-                                            mod_path, ME_ARRLEN(mod_path),
-                                            reserved)))
+    if ((mod_path_len = ME_GetModulePathEx(pid, mod,
+                                           mod_path, ME_ARRLEN(mod_path))))
     {
         if (mod_ref_len <= mod_path_len)
         {
@@ -871,52 +1067,21 @@ ME_GetModuleEx(me_pid_t     pid,
 }
 
 ME_API me_bool_t
-ME_GetModule2Ex(me_pid_t     pid,
-                me_tstring_t mod_ref,
-                me_module_t *pmod,
-                me_void_t   *reserved)
-{
-    me_bool_t ret = ME_FALSE;
-    _ME_GetModuleExArgs_t arg;
-    arg.pmod = pmod;
-    arg.mod_ref = mod_ref;
-
-    if (pid != (me_pid_t)ME_BAD && arg.mod_ref && arg.pmod)
-    {
-        ret = ME_EnumModules2Ex(pid, 
-                                _ME_GetModuleExCallback,
-                                (me_void_t *)&arg,
-                                reserved);
-    }
-
-    return ret;
-}
-
-ME_API me_bool_t
 ME_GetModule(me_tstring_t mod_ref,
              me_module_t *pmod)
 {
     return ME_GetModuleEx(ME_GetProcess(), mod_ref, pmod);
 }
 
-ME_API me_bool_t
-ME_GetModule2(me_tstring_t mod_ref,
-              me_module_t *pmod,
-              me_void_t   *reserved)
-{
-    return ME_GetModule2Ex(ME_GetProcess(), mod_ref, pmod, reserved);
-}
-
 static me_bool_t
 _ME_FindModuleExCallback(me_pid_t    pid,
                          me_module_t mod,
-                         me_void_t  *arg,
-                         me_void_t  *reserved)
+                         me_void_t  *arg)
 {
     _ME_FindModuleExArgs_t *parg = (_ME_FindModuleExArgs_t *)arg;
     me_tchar_t mod_path[ME_PATH_MAX] = { 0 };
-    if (ME_GetModulePath2Ex(pid, mod, mod_path,
-                            ME_ARRLEN(mod_path), reserved))
+    if (ME_GetModulePathEx(pid, mod, mod_path,
+                           ME_ARRLEN(mod_path)))
     {
         if (ME_STRSTR(mod_path, parg->mod_ref))
         {
@@ -934,49 +1099,6 @@ ME_FindModuleEx(me_pid_t     pid,
                 me_module_t *pmod)
 {
     me_bool_t ret = ME_FALSE;
-
-    if (pid == (me_pid_t)ME_BAD || !mod_ref || !pmod)
-        return ret;
-
-#   if ME_OS == ME_OS_WIN
-    {
-        ret = ME_FindModule2Ex(pid, mod_ref, pmod, ME_NULLPTR);
-    }
-#   elif ME_OS == ME_OS_LINUX
-    {
-        me_tchar_t *maps_file = (me_tchar_t *)ME_NULL;
-        {
-            me_tchar_t maps_path[64] = { 0 };
-
-            ME_SNPRINTF(maps_path, ME_ARRLEN(maps_path) - 1,
-                        ME_STR("/proc/%d/maps"), pid);
-            
-            if (!_ME_ReadFile(maps_path, &maps_file) ||
-                !maps_file)
-            {
-                return ret;
-            }
-        }
-
-        ret = ME_FindModule2Ex(pid, mod_ref, pmod, (me_void_t *)maps_file);
-
-        ME_free(maps_file);
-    }
-#   elif ME_OS == ME_OS_BSD
-    {
-
-    }
-#   endif
-    return ret;
-}
-
-ME_API me_bool_t
-ME_FindModule2Ex(me_pid_t     pid,
-                 me_tstring_t mod_ref,
-                 me_module_t *pmod,
-                 me_void_t   *reserved)
-{
-    me_bool_t ret = ME_FALSE;
     _ME_FindModuleExArgs_t arg;
 
     arg.pmod = pmod;
@@ -985,10 +1107,9 @@ ME_FindModule2Ex(me_pid_t     pid,
     if (pid == (me_pid_t)ME_BAD || !arg.mod_ref || !arg.pmod)
         return ret;
 
-    ret = ME_EnumModules2Ex(pid,
-                            _ME_FindModuleExCallback,
-                            (me_void_t *)&arg,
-                            reserved);
+    ret = ME_EnumModulesEx(pid,
+                           _ME_FindModuleExCallback,
+                           (me_void_t *)&arg);
     
     return ret;
 }
@@ -1000,66 +1121,11 @@ ME_FindModule(me_tstring_t mod_ref,
     return ME_FindModuleEx(ME_GetProcess(), mod_ref, pmod);
 }
 
-ME_API me_bool_t
-ME_FindModule2(me_tstring_t mod_ref,
-               me_module_t *pmod,
-               me_void_t   *reserved)
-{
-    return ME_FindModule2Ex(ME_GetProcess(), mod_ref, pmod, reserved);
-}
-
 ME_API me_size_t
 ME_GetModulePathEx(me_pid_t    pid,
                    me_module_t mod,
                    me_tchar_t *mod_path,
                    me_size_t   max_len)
-{
-    me_size_t chr_count = 0;
-
-    if (pid == (me_pid_t)ME_BAD || !mod_path || max_len == 0)
-        return chr_count;
-
-#   if ME_OS == ME_OS_WIN
-    {
-        chr_count = ME_GetModulePath2Ex(pid, mod, mod_path,
-                                        max_len, ME_NULLPTR);
-    }
-#   elif ME_OS == ME_OS_LINUX
-    {
-        me_tchar_t *maps_file = (me_tchar_t *)ME_NULL;
-        {
-            me_tchar_t maps_path[64] = { 0 };
-
-            ME_SNPRINTF(maps_path, ME_ARRLEN(maps_path) - 1,
-                        ME_STR("/proc/%d/maps"), pid);
-            
-            if (!_ME_ReadFile(maps_path, &maps_file) ||
-                !maps_file)
-            {
-                return chr_count;
-            }
-        }
-
-        chr_count = ME_GetModulePath2Ex(pid, mod, mod_path,
-                                        max_len, (me_void_t *)maps_file);
-
-        ME_free(maps_file);
-    }
-#   elif ME_OS == ME_OS_BSD
-    {
-
-    }
-#   endif
-
-    return chr_count;
-}
-
-ME_API me_size_t
-ME_GetModulePath2Ex(me_pid_t    pid,
-                    me_module_t mod,
-                    me_tchar_t *mod_path,
-                    me_size_t   max_len,
-                    me_void_t  *reserved)
 {
     me_size_t chr_count = 0;
 
@@ -1099,7 +1165,14 @@ ME_GetModulePath2Ex(me_pid_t    pid,
     }
 #   elif ME_OS == ME_OS_LINUX
     {
-        me_tchar_t *maps_file = (me_tchar_t *)reserved;
+        me_tchar_t *maps_file = (me_tchar_t *)ME_NULL;
+
+        {
+            me_process_t *pcache = _ME_GetProcessCache(pid);
+
+            if (pcache != (me_process_t *)ME_BAD)
+                maps_file = pcache->cache.maps_file;
+        }
         
         if (!maps_file)
             return chr_count;
@@ -1162,32 +1235,6 @@ ME_GetModulePath(me_module_t mod,
 
 #   if ME_OS == ME_OS_WIN
     {
-        chr_count = ME_GetModulePath2(mod, mod_path, 
-                                      max_len, ME_NULLPTR);
-    }
-#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
-    {
-        chr_count = ME_GetModulePathEx(ME_GetProcess(), mod, 
-                                       mod_path, max_len);
-    }
-#   endif
-
-    return chr_count;
-}
-
-ME_API me_size_t
-ME_GetModulePath2(me_module_t mod,
-                  me_tchar_t *mod_path,
-                  me_size_t   max_len,
-                  me_void_t  *reserved)
-{
-    me_size_t chr_count = 0;
-
-    if (!mod_path || max_len == 0)
-        return chr_count;
-
-#   if ME_OS == ME_OS_WIN
-    {
         HMODULE hModule = (HMODULE)NULL;
         GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,
                           (LPTSTR)mod.base,
@@ -1199,8 +1246,8 @@ ME_GetModulePath2(me_module_t mod,
     }
 #   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
     {
-        chr_count = ME_GetModulePath2Ex(ME_GetProcess(), mod, mod_path,
-                                        max_len, reserved);
+        chr_count = ME_GetModulePathEx(ME_GetProcess(), mod, mod_path,
+                                       max_len);
     }
 #   endif
 
@@ -1212,55 +1259,6 @@ ME_GetModuleNameEx(me_pid_t    pid,
                    me_module_t mod,
                    me_tchar_t *mod_name,
                    me_size_t   max_len)
-{
-    me_size_t chr_count = 0;
-
-    if (pid == (me_pid_t)ME_BAD || !mod_name || max_len == 0)
-        return chr_count;
-
-#   if ME_OS == ME_OS_WIN
-    {
-        chr_count = ME_GetModuleName2Ex(pid, mod, mod_name,
-                                        max_len, ME_NULLPTR);
-    }
-#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
-    {
-        me_tchar_t mod_path[ME_PATH_MAX] = { 0 };
-        if (ME_GetModulePathEx(pid, mod, mod_path, ME_ARRLEN(mod_path)))
-        {
-            me_tchar_t path_chr;
-            me_tchar_t *tmp;
-            me_tchar_t *file_str;
-
-#           if ME_OS == ME_OS_WIN
-            path_chr = ME_STR('\\');
-#           elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
-            path_chr = ME_STR('/');
-#           endif
-
-            for (tmp = mod_path;
-                    (tmp = ME_STRCHR(tmp, path_chr));
-                    tmp = &tmp[1], file_str = tmp);
-
-            chr_count = ME_STRLEN(file_str);
-            if (chr_count > max_len)
-                chr_count = max_len;
-
-            ME_MEMCPY((void *)mod_name, (void *)file_str,
-                        chr_count * sizeof(mod_name[0]));
-        }
-    }
-#   endif
-
-    return chr_count;
-}
-
-ME_API me_size_t
-ME_GetModuleName2Ex(me_pid_t    pid,
-                    me_module_t mod,
-                    me_tchar_t *mod_name,
-                    me_size_t   max_len,
-                    me_void_t  *reserved)
 {
     me_size_t chr_count = 0;
 
@@ -1301,8 +1299,8 @@ ME_GetModuleName2Ex(me_pid_t    pid,
 #   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
     {
         me_tchar_t mod_path[ME_PATH_MAX] = { 0 };
-        if (ME_GetModulePath2Ex(pid, mod, mod_path, 
-                                ME_ARRLEN(mod_path), reserved))
+        if (ME_GetModulePathEx(pid, mod, mod_path, 
+                               ME_ARRLEN(mod_path)))
         {
             me_tchar_t path_chr;
             me_tchar_t *tmp;
@@ -1369,95 +1367,10 @@ ME_GetModuleName(me_module_t mod,
     return chr_count;
 }
 
-ME_API me_size_t
-ME_GetModuleName2(me_module_t mod,
-                  me_tchar_t *mod_name,
-                  me_size_t   max_len,
-                  me_void_t  *reserved)
-{
-    me_size_t chr_count = 0;
-    me_tchar_t mod_path[ME_PATH_MAX] = { 0 };
-
-    if (!mod_name || max_len == 0)
-        return chr_count;
-
-    if (ME_GetModulePath2(mod, mod_path, ME_ARRLEN(mod_path), reserved))
-    {
-        me_tchar_t path_chr;
-        me_tchar_t *tmp;
-        me_tchar_t *file_str;
-
-#       if ME_OS == ME_OS_WIN
-        path_chr = ME_STR('\\');
-#       elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
-        path_chr = ME_STR('/');
-#       endif
-
-        for (tmp = mod_path;
-                (tmp = ME_STRCHR(tmp, path_chr));
-                tmp = &tmp[1], file_str = tmp);
-
-        chr_count = ME_STRLEN(file_str);
-        if (chr_count > max_len)
-            chr_count = max_len;
-
-        ME_MEMCPY((void *)mod_name, (void *)file_str,
-                    chr_count * sizeof(mod_name[0]));
-    }
-
-    return chr_count;
-}
-
 ME_API me_bool_t
 ME_LoadModuleEx(me_pid_t     pid,
                 me_tstring_t path,
                 me_module_t *pmod)
-{
-    me_bool_t ret = ME_FALSE;
-
-    if (pid == (me_pid_t)ME_BAD || !path)
-        return ret;
-
-#   if ME_OS == ME_OS_WIN
-    {
-        ret = ME_LoadModule2Ex(pid, path, ME_NULLPTR);
-    }
-#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
-    {
-        int mode = RTLD_LAZY;
-        me_tchar_t *maps_file = (me_tchar_t *)ME_NULL;
-        {
-            me_tchar_t maps_path[64] = { 0 };
-
-            ME_SNPRINTF(maps_path, ME_ARRLEN(maps_path) - 1,
-                        ME_STR("/proc/%d/maps"), pid);
-            
-            if (!_ME_ReadFile(maps_path, &maps_file) ||
-                !maps_file)
-            {
-                return ret;
-            }
-        }
-
-        ret = ME_LoadModule2Ex(pid, path, (me_void_t *)&mode, maps_file);
-
-        if (pmod)
-        {
-            ME_GetModuleEx(pid, path, pmod);
-        }
-
-        ME_free(maps_file);
-    }
-#   endif
-
-    return ret;
-}
-
-ME_API me_bool_t
-ME_LoadModule2Ex(me_pid_t     pid,
-                 me_tstring_t path,
-                 me_void_t   *reserved,
-                 ...)
 {
     me_bool_t ret = ME_FALSE;
 
@@ -1475,7 +1388,7 @@ ME_LoadModule2Ex(me_pid_t     pid,
 
         if (ME_WriteMemoryEx(pid, path_addr, (me_byte_t *)path, path_size))
         {
-            HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
+            HANDLE hProcess = _ME_GetProcessCache(pid)->cache.hProcess;
 
             if (hProcess)
             {
@@ -1499,8 +1412,7 @@ ME_LoadModule2Ex(me_pid_t     pid,
     }
 #   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
     {
-        me_tchar_t *maps_file;
-        int *mode = (int *)reserved;
+        int mode = RTLD_LAZY;
         me_address_t dlopen_ex;
         me_address_t inj_addr;
         me_size_t inj_size;
@@ -1524,30 +1436,20 @@ ME_LoadModule2Ex(me_pid_t     pid,
 #       endif
 
         {
-            va_list va;
-            va_start(va, reserved);
-            maps_file = va_arg(va, me_tchar_t *);
-            va_end(va);
-        }
-
-        if (!maps_file)
-            return ret;
-
-        {
             me_module_t libc_mod;
             me_tchar_t  libc_path[ME_PATH_MAX];
             void *libc_handle;
 
-            if (!ME_FindModule2Ex(pid, ME_STR("/libc-"),
-                                  &libc_mod, maps_file) ||
-                !ME_FindModule2Ex(pid, ME_STR("/libc."),
-                                  &libc_mod, maps_file))
+            if (!ME_FindModuleEx(pid, ME_STR("/libc-"),
+                                  &libc_mod) ||
+                !ME_FindModuleEx(pid, ME_STR("/libc."),
+                                  &libc_mod))
             {
                 return ret;
             }
 
-            if (!ME_GetModulePath2Ex(pid, libc_mod, libc_path,
-                                     ME_ARRLEN(libc_path), maps_file))
+            if (!ME_GetModulePathEx(pid, libc_mod, libc_path,
+                                     ME_ARRLEN(libc_path)))
             {
                 return ret;
             }
@@ -1622,7 +1524,7 @@ ME_LoadModule2Ex(me_pid_t     pid,
 #           if ME_ARCH_SIZE == 64
             ME_WriteRegDbg((me_uintptr_t)dlopen_ex, ME_REGID_RAX, &regs);
             ME_WriteRegDbg((me_uintptr_t)path_addr, ME_REGID_RDI, &regs);
-            ME_WriteRegDbg((me_uintptr_t)(*mode),   ME_REGID_RSI, &regs);
+            ME_WriteRegDbg((me_uintptr_t)mode,      ME_REGID_RSI, &regs);
             ME_WriteRegDbg((me_uintptr_t)inj_addr,  ME_REGID_RIP, &regs);
 #           else
             ME_WriteRegDbg((me_uintptr_t)dlopen_ex, ME_REGID_EAX, &regs);
@@ -1643,10 +1545,14 @@ ME_LoadModule2Ex(me_pid_t     pid,
 
     L_FREE:
         ME_FreeMemoryEx(pid, inj_addr, inj_size);
+        _ME_UpdateProcessCache(pid);
 
         ret = ME_TRUE;
     }
 #   endif
+
+    if (pmod)
+        ME_GetModuleEx(pid, path, pmod);
 
     return ret;
 }
@@ -1662,40 +1568,19 @@ ME_LoadModule(me_tstring_t path,
 
 #   if ME_OS == ME_OS_WIN
     {
-        ret = ME_LoadModule2(path, pmod, ME_NULLPTR);
-    }
-#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
-    {
-        int mode = RTLD_LAZY;
-        ret = ME_LoadModule2(path, (me_void_t *)&mode);
-
-        if (pmod)
-            ME_GetModule(path, pmod);
-    }
-#   endif
-
-    return ret;
-}
-
-ME_API me_bool_t
-ME_LoadModule2(me_tstring_t path,
-               me_void_t   *reserved)
-{
-    me_bool_t ret = ME_FALSE;
-
-    if (!path)
-        return ret;
-
-#   if ME_OS == ME_OS_WIN
-    {
         ret = (LoadLibrary(path) != NULL) ? ME_TRUE : ME_FALSE;
     }
 #   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
     {
-        int *pmode = (int *)reserved;
-        ret = dlopen(path, *pmode) ? ME_TRUE : ME_FALSE;
+        ret = dlopen(path, RTLD_LAZY) ? ME_TRUE : ME_FALSE;
     }
 #   endif
+
+    if (ret)
+        _ME_UpdateProcessCache(ME_GetProcess());
+
+    if (pmod)
+        ME_GetModule(path, pmod);
 
     return ret;
 }
@@ -1711,54 +1596,10 @@ ME_UnloadModuleEx(me_pid_t    pid,
 
 #   if ME_OS == ME_OS_WIN
     {
-        ret = ME_UnloadModule2Ex(pid, mod, ME_NULLPTR);
-    }
-#   elif ME_OS == ME_OS_LINUX
-    {
-        me_tchar_t *maps_file = (me_tchar_t *)ME_NULL;
-        {
-            me_tchar_t maps_path[64] = { 0 };
-
-            ME_SNPRINTF(maps_path, ME_ARRLEN(maps_path) - 1,
-                        ME_STR("/proc/%d/maps"), pid);
-            
-            if (!_ME_ReadFile(maps_path, &maps_file) ||
-                !maps_file)
-            {
-                return ret;
-            }
-        }
-
-        ret = ME_UnloadModule2Ex(pid, mod, (me_void_t *)maps_file);
-
-        ME_free(maps_file);
-    }
-#   elif ME_OS == ME_OS_BSD
-    {
-
-    }
-#   endif
-
-    return ret;
-}
-
-ME_API me_bool_t
-ME_UnloadModule2Ex(me_pid_t    pid,
-                   me_module_t mod,
-                   me_void_t  *reserved)
-{
-    me_bool_t ret = ME_FALSE;
-
-    if (pid == (me_pid_t)ME_BAD)
-        return ret;
-
-#   if ME_OS == ME_OS_WIN
-    {
 
     }
 #   elif ME_OS == ME_OS_LINUX
     {
-        me_tchar_t *maps_file = (me_tchar_t *)reserved;
         me_address_t dlclose_ex;
         me_address_t inj_addr;
         me_size_t inj_size;
@@ -1780,24 +1621,21 @@ ME_UnloadModule2Ex(me_pid_t    pid,
 #       endif
 #       endif
 
-        if (!maps_file)
-            return ret;
-
         {
             me_module_t libc_mod;
             me_tchar_t  libc_path[ME_PATH_MAX];
             void *libc_handle;
 
-            if (!ME_FindModule2Ex(pid, ME_STR("/libc-"),
-                                  &libc_mod, maps_file) ||
-                !ME_FindModule2Ex(pid, ME_STR("/libc."),
-                                  &libc_mod, maps_file))
+            if (!ME_FindModuleEx(pid, ME_STR("/libc-"),
+                                 &libc_mod) ||
+                !ME_FindModuleEx(pid, ME_STR("/libc."),
+                                 &libc_mod))
             {
                 return ret;
             }
 
-            if (!ME_GetModulePath2Ex(pid, libc_mod, libc_path,
-                                     ME_ARRLEN(libc_path), maps_file))
+            if (!ME_GetModulePathEx(pid, libc_mod, libc_path,
+                                    ME_ARRLEN(libc_path)))
             {
                 return ret;
             }
@@ -1885,6 +1723,7 @@ ME_UnloadModule2Ex(me_pid_t    pid,
 
     L_FREE:
         ME_FreeMemoryEx(pid, inj_addr, inj_size);
+        _ME_UpdateProcessCache(pid);
 
         ret = ME_TRUE;
     }
@@ -1945,56 +1784,18 @@ ME_EnumPagesEx(me_pid_t   pid,
 
 #   if ME_OS == ME_OS_WIN
     {
-        ret = ME_EnumPages2Ex(pid, callback, arg, ME_NULLPTR);
+
     }
 #   elif ME_OS == ME_OS_LINUX
     {
         me_tchar_t *maps_file = (me_tchar_t *)ME_NULL;
+
         {
-            me_tchar_t maps_path[64] = { 0 };
+            me_process_t *pcache = _ME_GetProcessCache(pid);
 
-            ME_SNPRINTF(maps_path, ME_ARRLEN(maps_path) - 1,
-                        ME_STR("/proc/%d/maps"), pid);
-            
-            if (!_ME_ReadFile(maps_path, &maps_file) ||
-                !maps_file)
-            {
-                return ret;
-            }
+            if (pcache != (me_process_t *)ME_BAD)
+                maps_file = pcache->cache.maps_file;
         }
-
-        ret = ME_EnumPages2Ex(pid, callback, arg, (me_void_t *)maps_file);
-
-        ME_free(maps_file);
-    }
-#   elif ME_OS == ME_OS_BSD
-    {
-
-    }
-#   endif
-
-    return ret;
-}
-
-ME_API me_bool_t
-ME_EnumPages2Ex(me_pid_t   pid,
-                me_bool_t(*callback)(me_page_t  page,
-                                     me_void_t *arg),
-                me_void_t *arg,
-                me_void_t *reserved)
-{
-    me_bool_t ret = ME_FALSE;
-
-    if (pid == (me_pid_t)ME_BAD || !callback)
-        return ret;
-
-#   if ME_OS == ME_OS_WIN
-    {
-
-    }
-#   elif ME_OS == ME_OS_LINUX
-    {
-        me_tchar_t *maps_file = (me_tchar_t *)reserved;
 
         if (!maps_file)
             return ret;
@@ -2074,15 +1875,6 @@ ME_EnumPages(me_bool_t(*callback)(me_page_t  page,
     return ME_EnumPagesEx(ME_GetProcess(), callback, arg);
 }
 
-ME_API me_bool_t
-ME_EnumPages2(me_bool_t(*callback)(me_page_t  page,
-                                   me_void_t *arg),
-              me_void_t *arg,
-              me_void_t *reserved)
-{
-    return ME_EnumPages2Ex(ME_GetProcess(), callback, arg, reserved);
-}
-
 static me_bool_t
 _ME_GetPageExCallback(me_page_t  page,
                       me_void_t *arg)
@@ -2120,38 +1912,10 @@ ME_GetPageEx(me_pid_t     pid,
 }
 
 ME_API me_bool_t
-ME_GetPage2Ex(me_pid_t     pid,
-              me_address_t addr,
-              me_page_t   *ppage,
-              me_void_t   *reserved)
-{
-    me_bool_t ret = ME_FALSE;
-    _ME_GetPageExArgs_t arg;
-    arg.addr = addr;
-    arg.ppage = ppage;
-
-    if (pid == (me_pid_t)ME_BAD || !arg.ppage)
-        return ret;
-
-    ret = ME_EnumPages2Ex(pid, _ME_GetPageExCallback,
-                          (me_void_t *)&arg, reserved);
-
-    return ret;
-}
-
-ME_API me_bool_t
 ME_GetPage(me_address_t addr,
            me_page_t   *ppage)
 {
     return ME_GetPageEx(ME_GetProcess(), addr, ppage);
-}
-
-ME_API me_bool_t
-ME_GetPage2(me_address_t addr,
-            me_page_t   *ppage,
-            me_void_t   *reserved)
-{
-    return ME_GetPage2Ex(ME_GetProcess(), addr, ppage, reserved);
 }
 
 /****************************************/
@@ -2169,7 +1933,7 @@ ME_ReadMemoryEx(me_pid_t     pid,
 
 #   if ME_OS == ME_OS_WIN
     {
-        HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
+        HANDLE hProcess = _ME_GetProcessCache(pid)->cache.hProcess;
 
         if (!hProcess)
             return byte_count;
@@ -2240,7 +2004,7 @@ ME_WriteMemoryEx(me_pid_t     pid,
 
 #   if ME_OS == ME_OS_WIN
     {
-        HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
+        HANDLE hProcess = _ME_GetProcessCache(pid)->cache.hProcess;
 
         if (!hProcess)
             return byte_count;
@@ -2310,10 +2074,18 @@ ME_ProtectMemoryEx(me_pid_t     pid,
 
     if (pid == (me_pid_t)ME_BAD || size == 0)
         return ret;
-    
+
 #   if ME_OS == ME_OS_WIN
     {
-        ret = ME_ProtectMemory2Ex(pid, addr, size, prot, ME_NULLPTR);
+        HANDLE hProcess = _ME_GetProcessCache(pid)->cache.hProcess;
+
+        if (!hProcess)
+            return ret;
+
+        ret = VirtualProtectEx(hProcess, addr, size,
+                               prot, &old_protection) ? ME_TRUE : ME_FALSE;
+
+        CloseHandle(hProcess);
     }
 #   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
     {
@@ -2346,65 +2118,8 @@ ME_ProtectMemoryEx(me_pid_t     pid,
     if (old_prot)
         *old_prot = old_protection;
 
-    return ret;
-}
-
-ME_API me_bool_t
-ME_ProtectMemory2Ex(me_pid_t     pid,
-                    me_address_t addr,
-                    me_size_t    size,
-                    me_prot_t    prot,
-                    me_prot_t   *old_prot,
-                    me_void_t   *reserved)
-{
-    me_bool_t ret = ME_FALSE;
-    me_prot_t old_protection = 0;
-
-    if (pid == (me_pid_t)ME_BAD || size == 0)
-        return ret;
-
-#   if ME_OS == ME_OS_WIN
-    {
-        HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
-
-        if (!hProcess)
-            return ret;
-
-        ret = VirtualProtectEx(hProcess, addr, size,
-                               prot, &old_protection) ? ME_TRUE : ME_FALSE;
-
-        CloseHandle(hProcess);
-    }
-#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
-    {
-        me_page_t page;
-        me_int_t  nsyscall = -1;
-#       if ME_OS == ME_OS_LINUX
-        nsyscall = __NR_mprotect;
-#       elif ME_OS == ME_OS_BSD
-        nsyscall = SYS_mprotect;
-#       endif
-
-        if (!ME_GetPage2Ex(pid, addr, &page, reserved))
-            return ret;
-
-        old_protection = page.prot;
-
-        ret = (
-            !ME_SyscallEx(pid,
-                          nsyscall,
-                          (me_void_t *)page.base,
-                          (me_void_t *)(me_uintptr_t)size,
-                          (me_void_t *)(me_uintptr_t)prot,
-                          ME_NULLPTR,
-                          ME_NULLPTR,
-                          ME_NULLPTR)
-        ) ? ME_TRUE : ME_FALSE;
-    }
-#   endif
-
-    if (old_prot)
-        *old_prot = old_protection;
+    if (ret)
+        _ME_UpdateProcessCache(pid);
 
     return ret;
 }
@@ -2423,13 +2138,13 @@ ME_ProtectMemory(me_address_t addr,
 
 #   if ME_OS == ME_OS_WIN
     {
-        ret = ME_ProtectMemory2(addr, size, prot,
-                                old_prot, ME_NULLPTR);
+        ret = VirtualProtect(addr, size,
+                             prot, old_protection) != 0 ? ME_TRUE : ME_FALSE;
     }
 #   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
     {
         me_page_t page;
-
+        
         if (!ME_GetPage(addr, &page))
             return ret;
 
@@ -2440,41 +2155,9 @@ ME_ProtectMemory(me_address_t addr,
     if (old_prot)
         *old_prot = old_protection;
     
-    return ret;
-}
+    if (ret)
+        _ME_UpdateProcessCache(ME_GetProcess());
 
-ME_API me_bool_t
-ME_ProtectMemory2(me_address_t addr,
-                  me_size_t    size,
-                  me_prot_t    prot,
-                  me_prot_t   *old_prot,
-                  me_void_t   *reserved)
-{
-    me_bool_t ret = ME_FALSE;
-    me_prot_t old_protection = 0;
-
-    if (size == 0)
-        return ret;
-
-#   if ME_OS == ME_OS_WIN
-    {
-        ret = VirtualProtect(addr, size,
-                             prot, old_protection) != 0 ? ME_TRUE : ME_FALSE;
-    }
-#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
-    {
-        me_page_t page;
-        
-        if (!ME_GetPage2(addr, &page, reserved))
-            return ret;
-
-        ret = !mprotect(page.base, size, prot) ? ME_TRUE : ME_FALSE;
-    }
-#   endif
-
-    if (old_prot)
-        *old_prot = old_protection;
-    
     return ret;
 }
 
@@ -2490,7 +2173,7 @@ ME_AllocateMemoryEx(me_pid_t   pid,
 
 #   if ME_OS == ME_OS_WIN
     {
-        HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
+        HANDLE hProcess = _ME_GetProcessCache(pid)->cache.hProcess;
 
         if (!hProcess)
             return alloc;
@@ -2531,6 +2214,9 @@ ME_AllocateMemoryEx(me_pid_t   pid,
         {
             alloc = (me_address_t)ME_BAD;
         }
+
+        if (alloc != (me_address_t)ME_BAD)
+            _ME_UpdateProcessCache(ME_GetProcess());
     }
 #   endif
 
@@ -2563,6 +2249,9 @@ ME_AllocateMemory(me_size_t  size,
 
         if (alloc == (me_address_t)MAP_FAILED)
             alloc = (me_address_t)ME_BAD;
+
+        if (alloc != (me_address_t)ME_BAD)
+            _ME_UpdateProcessCache(ME_GetProcess());
     }
 #   endif
 
@@ -2581,7 +2270,7 @@ ME_FreeMemoryEx(me_pid_t     pid,
 
 #   if ME_OS == ME_OS_WIN
     {
-        HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
+        HANDLE hProcess = _ME_GetProcessCache(pid)->cache.hProcess;
 
         if (!hProcess)
             return ret;
@@ -2611,6 +2300,9 @@ ME_FreeMemoryEx(me_pid_t     pid,
                           ME_NULLPTR,
                           ME_NULLPTR)
         ) ? ME_TRUE : ME_FALSE;
+
+        if (ret)
+            _ME_UpdateProcessCache(pid);
     }
 #   endif
 
@@ -2629,6 +2321,9 @@ ME_FreeMemory(me_address_t addr,
 #   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
     {
         ret = !munmap(addr, size) ? ME_TRUE : ME_FALSE;
+
+        if (ret)
+            _ME_UpdateProcessCache(ME_GetProcess());
     }
 #   endif
 
@@ -3074,7 +2769,7 @@ ME_GetStateDbg(me_pid_t pid)
 #   if ME_OS == ME_OS_WIN
     {
         BOOL Check = FALSE;
-        HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
+        HANDLE hProcess = _ME_GetProcessCache(pid)->cache.hProcess;
 
         if (!hProcess)
             return ret;
@@ -4086,7 +3781,7 @@ ME_BreakDbg(me_pid_t pid)
 
 #   if ME_OS == ME_OS_WIN
     {
-        HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
+        HANDLE hProcess = _ME_GetProcessCache(pid)->cache.hProcess;
         if (!hProcess)
             return ret;
         ret = DebugBreakProcess(hProcess) ? ME_TRUE : ME_FALSE;

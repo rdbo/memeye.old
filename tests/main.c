@@ -34,7 +34,6 @@ int main()
 	tprintf(ME_STR("[*] Internal Test\n"));
 
 	pid = ME_GetProcess();
-	ME_OpenProcess(pid);
 	tprintf(ME_STR("[*] Process ID: %i\n"), pid);
 
 	ppid = ME_GetProcessParent();
@@ -91,12 +90,11 @@ int main()
 	ME_UnloadModule(mod);
 
 	tprintf(ME_STR("[#] ####################\n"));
-	ME_CloseProcess(pid);
+
 	/* External */
 	tprintf(ME_STR("[*] External Test\n"));
 
 	pid = ME_GetProcessEx(ME_STR(TARGET_PROCESS));
-	ME_OpenProcess(pid);
 	tprintf(ME_STR("[*] Process ID: %i\n"), pid);
 
 	if (pid == (me_pid_t)ME_BAD)
@@ -158,7 +156,6 @@ int main()
 	tprintf(ME_STR("[*] Library Module Size: %p\n"), (void *)mod.size);
 	tprintf(ME_STR("[*] Library Module End:  %p\n"), mod.end);
 	ME_UnloadModuleEx(pid, mod);
-	ME_CloseProcess(pid);
 
 	tprintf(ME_STR("[#] ####################\n"));
 	tprintf(ME_STR("[+] Tests Finished Successfully\n"));

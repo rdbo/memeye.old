@@ -368,6 +368,16 @@ typedef struct me_page_t
     me_flags_t   flags;
 } me_page_t;
 
+typedef struct me_cache_t
+{
+    pid_t pid;
+#   if ME_OS == ME_OS_WIN
+    HANDLE hProcess;
+#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
+    me_tchar_t *maps_file;
+#   endif
+} me_cache_t;
+
 /* MemEye */
 ME_API void *
 ME_malloc(size_t size);
@@ -378,6 +388,18 @@ ME_calloc(size_t nmemb,
 
 ME_API void
 ME_free(void *ptr);
+
+ME_API me_cache_t *
+ME_CreateProcessCache(me_pid_t pid);
+
+ME_API me_bool_t
+ME_UpdateProcessCache(me_pid_t pid);
+
+ME_API me_void_t
+ME_DeleteProcessCache(me_pid_t pid);
+
+ME_API me_cache_t *
+ME_GetProcessCache(me_pid_t pid);
 
 /****************************************/
 

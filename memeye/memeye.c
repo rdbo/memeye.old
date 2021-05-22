@@ -38,26 +38,47 @@ typedef struct _ME_GetPageExArgs_t
 
 /****************************************/
 
+static me_size_t    g_AllocRef = 0;
+static me_cache_t *g_ProcessCache = (me_cache_t *)ME_NULL;
+static me_size_t    g_ProcessCacheLen = 0;
+
+/****************************************/
+
 ME_API void *
 ME_malloc(size_t size)
 {
-    return ME_MALLOC(size);
+    void *buf;
+
+    buf = ME_MALLOC(size);
+
+    if (buf)
+        ++g_AllocRef;
+    
+    return buf;
 }
 
 ME_API void *
 ME_calloc(size_t nmemb,
           size_t size)
 {
-    return ME_CALLOC(nmemb, size);
+    void *buf;
+
+    buf = ME_CALLOC(nmemb, size);
+
+    if (buf)
+        ++g_AllocRef;
+    
+    return buf;
 }
 
 ME_API void
 ME_free(void *ptr)
 {
+    if (ptr)
+        --g_AllocRef;
+    
     ME_FREE(ptr);
 }
-
-/****************************************/
 
 static me_size_t
 _ME_ReadFile(me_tstring_t path,
@@ -143,6 +164,138 @@ _ME_ReadFile(me_tstring_t path,
 
     return byte_count;
 }
+
+ME_API me_cache_t *
+ME_GetProcessCache(me_pid_t pid)
+{
+    me_cache_t *pcache = (me_cache_t *)ME_NULL;
+    me_size_t i;
+
+    for (i = 0; i < g_ProcessCacheLen; ++i)
+    {
+        me_cache_t *cur = &g_ProcessCache[i];
+        if (cur->pid == pid)
+        {
+            pcache = cur;
+            break;
+        }
+    }
+
+    return pcache;
+}
+
+ME_API me_cache_t *
+ME_CreateProcessCache(me_pid_t pid)
+{
+    me_cache_t *old_cache;
+
+    if ((old_cache = ME_GetProcessCache(pid)))
+    {
+        ME_UpdateProcessCache(pid);
+        return old_cache;
+    }
+
+    old_cache = g_ProcessCache;
+
+    g_ProcessCache = (me_cache_t *)ME_malloc(
+        sizeof(me_cache_t) * (g_ProcessCacheLen + 1)
+    );
+
+    if (!g_ProcessCache)
+    {
+        g_ProcessCache = old_cache;
+        return (me_cache_t *)ME_NULL;
+    }
+
+    if (g_ProcessCacheLen && old_cache)
+    {
+        ME_MEMCPY(g_ProcessCache,
+                  old_cache,
+                  g_ProcessCacheLen * sizeof(me_cache_t));
+        ME_free(old_cache);
+    }
+
+    g_ProcessCache[g_ProcessCacheLen].pid = pid;
+    ++g_ProcessCacheLen;
+
+    ME_UpdateProcessCache(pid);
+
+    return &g_ProcessCache[g_ProcessCacheLen - 1];
+}
+
+ME_API me_bool_t
+ME_UpdateProcessCache(me_pid_t pid)
+{
+    me_bool_t ret = ME_FALSE;
+
+    me_cache_t *pcache = ME_GetProcessCache(pid);
+
+    if (!pcache || pcache == (me_cache_t *)ME_BAD)
+        return ret;
+
+#   if ME_OS == ME_OS_WIN
+    {
+        pcache->hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
+        ret = pcache->hProcess ? ME_TRUE : ME_FALSE;
+    }
+#   elif ME_OS == ME_OS_LINUX
+    {
+        me_tchar_t maps_path[ME_PATH_MAX] = { 0 };
+        ME_SNPRINTF(maps_path, ME_ARRLEN(maps_path) - 1,
+                    ME_STR("/proc/%d/maps"), pid);
+        ret = _ME_ReadFile(maps_path, &pcache->maps_file) ? ME_TRUE : ME_FALSE;
+    }
+#   endif
+
+    return ret;
+}
+
+ME_API me_void_t
+ME_DeleteProcessCache(me_pid_t pid)
+{
+    me_cache_t *pcache = ME_GetProcessCache(pid);
+
+    if (!pcache)
+        return;
+
+#   if ME_OS == ME_OS_WIN
+    {
+        if (pcache->hProcess)
+            CloseHandle(pcache->hProcess);
+    }
+#   elif ME_OS == ME_OS_LINUX || ME_OS == ME_OS_BSD
+    {
+        if (pcache->maps_file)
+        {
+            ME_free(pcache->maps_file);
+        }
+    }
+#   endif
+
+    {
+        me_cache_t *old_cache = g_ProcessCache;
+        me_size_t i;
+        me_size_t j;
+
+        g_ProcessCache = ME_calloc(g_ProcessCacheLen - 1, sizeof(me_cache_t));
+        if (!g_ProcessCache)
+        {
+            g_ProcessCache = old_cache;
+            return;
+        }
+
+        for (i = 0, j = 0; i < g_ProcessCacheLen; ++i)
+        {
+            if (old_cache[i].pid != pid)
+            {
+                g_ProcessCache[j] = old_cache[i];
+                ++j;
+            }
+        }
+    }
+}
+
+/****************************************/
 
 ME_API me_bool_t
 ME_EnumProcesses(me_bool_t(*callback)(me_pid_t   pid,
